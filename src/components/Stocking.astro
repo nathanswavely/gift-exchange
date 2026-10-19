@@ -38,14 +38,19 @@ const lead = yours ? 'You are buying for' : `${whose} is buying for`;
           <pattern id={`knit-${giverId}`} width="8" height="7" patternUnits="userSpaceOnUse">
             <path d="M0 0 L4 5 L8 0" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.4" />
           </pattern>
+          <clipPath id={`sock-${giverId}`}>
+            <path d="M34 34 L88 34 L88 98 Q88 134 56 139 L26 141 Q8 141 8 125 Q8 110 25 106 L34 104 Z" />
+          </clipPath>
         </defs>
-        <path class="stocking-hook" d="M60 4 q8 0 8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-        <path class="stocking-body" d="M34 34 L88 34 L88 96 Q88 132 56 138 L26 140 Q8 140 8 124 Q8 110 24 106 L34 104 Z" />
-        <path d="M34 34 L88 34 L88 96 Q88 132 56 138 L26 140 Q8 140 8 124 Q8 110 24 106 L34 104 Z" fill={`url(#knit-${giverId})`} />
-        <path class="stocking-toe" d="M8 124 Q8 110 24 106 L30 105 Q30 126 34 139 L26 140 Q8 140 8 124 Z" />
-        <path class="stocking-heel" d="M88 96 Q88 132 56 138 L62 130 Q76 122 76 100 L88 98 Z" />
-        <rect class="stocking-cuff" x="28" y="12" width="66" height="26" rx="5" />
-        <rect x="32" y="16" width="58" height="18" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="3 2.5" />
+        <path class="stocking-loop" d="M86 14 C86 2 100 2 98 14" fill="none" stroke-width="2.4" stroke-linecap="round" />
+        <path class="stocking-body" d="M34 34 L88 34 L88 98 Q88 134 56 139 L26 141 Q8 141 8 125 Q8 110 25 106 L34 104 Z" />
+        <g clip-path={`url(#sock-${giverId})`}>
+          <rect width="120" height="150" fill={`url(#knit-${giverId})`} />
+          <path class="stocking-patch" d="M0 98 L30 98 Q36 120 30 150 L0 150 Z" />
+          <ellipse class="stocking-patch" cx="90" cy="136" rx="22" ry="20" />
+        </g>
+        <rect class="stocking-cuff" x="28" y="12" width="66" height="26" rx="6" />
+        <rect class="stocking-cuff-stitch" x="32" y="16" width="58" height="18" rx="3" fill="none" stroke-dasharray="3 2.5" />
       </svg>
     </button>
   </form>

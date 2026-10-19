@@ -103,27 +103,29 @@ details.edit .lt-form { margin-top: 0.75rem; }
   transform-origin: 50% 2%;
 }
 .stocking-body { fill: var(--lt-color-accent); }
-.stocking-toe, .stocking-heel { fill: var(--lt-color-primary); }
-.stocking-cuff { fill: var(--lt-color-raised); stroke: var(--lt-color-border-strong); stroke-width: 1; }
-.stocking-hook { color: var(--lt-color-text-muted); }
+.stocking-patch { fill: var(--lt-color-primary); }
+/* A cuff is white wool in any light, so it does not follow the theme. */
+.stocking-cuff { fill: #fbf7f1; stroke: rgba(43, 36, 32, 0.28); stroke-width: 1; }
+.stocking-cuff-stitch { stroke: #b9a993; stroke-width: 1; }
+.stocking-loop { stroke: var(--lt-color-text-muted); }
 
-/* The label can only be seen above the cuff: the window ends just past the cuff's top
-   edge, and the cuff (drawn over it) hides the label's last few pixels, so it reads as
-   pulled out of the stocking rather than floating in front of it. */
+/* The label can only be seen above the cuff: the window ends at the cuff's top edge, so
+   while it rises it comes up out of the stocking, and once out it rests clear of it, in
+   front, with nothing drawn over the name. */
 .label-window {
   position: absolute;
   top: 0;
   left: -3rem;
   right: -3rem;
-  height: 4.6rem;
-  z-index: 1;
+  height: 4.05rem;
+  z-index: 3;
   overflow: hidden;
   pointer-events: none;
 }
 .name-label {
   position: absolute;
   left: 50%;
-  bottom: 0.15rem;
+  bottom: 0.95rem;
   max-width: 15rem;
   padding: 0.3rem 0.75rem;
   font-family: var(--lt-font-display);
@@ -133,7 +135,7 @@ details.edit .lt-form { margin-top: 0.75rem; }
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--lt-color-accent);
-  transform: translate(-50%, 130%);
+  transform: translate(-50%, 160%);
 }
 .drawn .name-label { transform: translate(-50%, 0); transition: transform 750ms cubic-bezier(0.2, 0.9, 0.3, 1.25); }
 .rising .name-label { animation: rise 900ms cubic-bezier(0.2, 0.9, 0.3, 1.25) 150ms both; }
@@ -150,7 +152,7 @@ details.edit .lt-form { margin-top: 0.75rem; }
   100% { transform: rotate(0) translateY(0); }
 }
 @keyframes rise {
-  from { transform: translate(-50%, 130%); }
+  from { transform: translate(-50%, 160%); }
   to { transform: translate(-50%, 0); }
 }
 
