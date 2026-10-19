@@ -13,7 +13,13 @@ const viewer = Astro.locals.viewer;
 const personId = Astro.params.id!;
 const mine = identities(viewer);
 
-if (!(await canSeeList(env.DB, viewer, personId))) return new Response('Not found.', { status: 404 });
+// On a plain page load the items can be read alongside the permission check; they are
+// thrown away unread if the check fails. A POST changes them, so it reads them after.
+const [allowed, early] = await Promise.all([
+  canSeeList(env.DB, viewer, personId),
+  Astro.request.method === 'GET' ? itemsOf(env.DB, personId, personId !== viewer.id) : Promise.resolve(null),
+]);
+if (!allowed) return new Response('Not found.', { status: 404 });
 
 const editable = mine.includes(personId);
 const isOwn = personId === viewer.id;
@@ -47,7 +53,7 @@ if (Astro.request.method === 'POST') {
   if (!error) return Astro.redirect(Astro.url.pathname, 303);
 }
 
-const items = await itemsOf(env.DB, personId, !isOwn);
+const items = early ?? (await itemsOf(env.DB, personId, !isOwn));
 const people = await peopleMap(env, [personId, ...mine, ...items.flatMap((i) => (i.claimerId ? [i.claimerId] : []))]);
 const owner = people.get(personId)!;
 const nameOf = (id: string) => (id === viewer.id ? 'You' : people.get(id)?.name ?? 'Someone');

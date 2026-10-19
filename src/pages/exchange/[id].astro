@@ -16,9 +16,12 @@ import {
 const env = getEnv();
 const viewer = Astro.locals.viewer;
 const ex = await getExchange(env.DB, Astro.params.id!);
-if (!ex || !(await canView(env.DB, viewer, ex.groupId))) return new Response('Not found.', { status: 404 });
-const group = (await getGroup(env.DB, ex.groupId))!;
-const organizing = (await canOrganize(env.DB, viewer, ex.groupId)) && ex.state !== 'done';
+if (!ex) return new Response('Not found.', { status: 404 });
+// Independent of each other, so asked at once rather than one after another.
+const [viewable, groupRow, canRun] = await Promise.all([canView(env.DB, viewer, ex.groupId), getGroup(env.DB, ex.groupId), canOrganize(env.DB, viewer, ex.groupId)]);
+if (!viewable) return new Response('Not found.', { status: 404 });
+const group = groupRow!;
+const organizing = canRun && ex.state !== 'done';
 let outcome: (DrawOutcome & { mode: 'draw' | 'redraw' | 'repair' }) | undefined;
 let notice: { tone: 'success' | 'error'; text: string } | undefined;
 
@@ -59,14 +62,19 @@ if (Astro.request.method === 'POST' && organizing) {
   }
 }
 
-const fresh = (await getExchange(env.DB, ex.id))!;
-const parts = await participantsOf(env.DB, ex.id);
-const groupMembers = await members(env.DB, ex.groupId);
-const fixed = organizing ? await fixedOf(env.DB, ex.id) : [];
+// A POST may have changed the Exchange; a GET has the one read above.
+const fresh = Astro.request.method === 'POST' ? (await getExchange(env.DB, ex.id))! : ex;
+const runningDrawn = organizing && fresh.state === 'drawn';
+const [parts, groupMembers, fixed, slips, unpaired, progress] = await Promise.all([
+  participantsOf(env.DB, ex.id),
+  members(env.DB, ex.groupId),
+  organizing ? fixedOf(env.DB, ex.id) : Promise.resolve([] as [string, string][]),
+  slipsFor(env.DB, ex.id, identities(viewer)), // only Participants have slips, so no need to wait for the list
+  runningDrawn ? unpairedGivers(env.DB, ex.id) : Promise.resolve(0),
+  runningDrawn ? revealProgress(env.DB, ex.id) : Promise.resolve(null),
+]);
 const mineIn = identities(viewer).filter((p) => parts.includes(p));
-const mine = await slipsFor(env.DB, ex.id, mineIn);
-const unpaired = organizing && fresh.state === 'drawn' ? await unpairedGivers(env.DB, ex.id) : 0;
-const progress = organizing && fresh.state === 'drawn' ? await revealProgress(env.DB, ex.id) : null;
+const mine = slips;
 const revealedNow = Astro.url.searchParams.get('revealed');
 const people = await peopleMap(env, [...groupMembers.map((m) => m.personId), ...parts, ...[...mine.values()].flatMap((m) => (m.revealed ? [m.recipientId] : []))]);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';

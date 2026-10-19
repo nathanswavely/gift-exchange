@@ -172,6 +172,34 @@ export async function updateExchange(db: D1Database, id: string, input: { name: 
   await db.prepare('UPDATE exchanges SET name = ?2, gift_date = ?3, budget = ?4 WHERE id = ?1').bind(id, input.name, input.giftDate, input.budget).run();
 }
 
+/** Every Exchange of every Group these People are in, in one query, for the home page. */
+export async function exchangesOfPeople(db: D1Database, personIds: string[]): Promise<Exchange[]> {
+  if (!personIds.length) return [];
+  const { results } = await db
+    .prepare(`SELECT id, group_id, name, gift_date, budget, drawn_at FROM exchanges WHERE group_id IN (SELECT group_id FROM group_people WHERE person_id IN (${marks(personIds.length)}))`)
+    .bind(...personIds)
+    .all<Parameters<typeof toExchange>[0]>();
+  return results.map(toExchange);
+}
+
+/** Which of these People take part in each of these Exchanges, in one query. */
+export async function participantsAmong(db: D1Database, exchangeIds: string[], personIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>(exchangeIds.map((x) => [x, []]));
+  if (!exchangeIds.length || !personIds.length) return out;
+  const { results } = await db
+    .prepare(`SELECT exchange_id, person_id FROM participants WHERE exchange_id IN (${marks(exchangeIds.length)}) AND person_id IN (${marks(personIds.length, exchangeIds.length + 1)})`)
+    .bind(...exchangeIds, ...personIds)
+    .all<{ exchange_id: string; person_id: string }>();
+  for (const r of results) out.get(r.exchange_id)!.push(r.person_id);
+  return out;
+}
+
+/** Everyone in any Group, for the Hub Admin's "first Organizer" list. */
+export async function everyMemberId(db: D1Database): Promise<string[]> {
+  const { results } = await db.prepare('SELECT DISTINCT person_id FROM group_people').all<{ person_id: string }>();
+  return results.map((r) => r.person_id);
+}
+
 export async function participantsOf(db: D1Database, exchangeId: string): Promise<string[]> {
   return (await db.prepare('SELECT person_id FROM participants WHERE exchange_id = ?1').bind(exchangeId).all<{ person_id: string }>()).results.map((r) => r.person_id);
 }
@@ -208,6 +236,18 @@ export async function slipsFor(db: D1Database, exchangeId: string, giverIds: str
     .bind(exchangeId, ...giverIds)
     .all<{ giver_id: string; recipient_id: string; revealed_at: number | null }>();
   return new Map(results.map((r) => [r.giver_id, r.revealed_at ? { revealed: true, recipientId: r.recipient_id } : { revealed: false }]));
+}
+
+/** `slipsFor` across several Exchanges in one query, for the home page. */
+export async function slipsForMany(db: D1Database, exchangeIds: string[], giverIds: string[]): Promise<Map<string, Map<string, Slip>>> {
+  const out = new Map<string, Map<string, Slip>>(exchangeIds.map((x) => [x, new Map()]));
+  if (!exchangeIds.length || !giverIds.length) return out;
+  const { results } = await db
+    .prepare(`SELECT exchange_id, giver_id, recipient_id, revealed_at FROM pairings WHERE exchange_id IN (${marks(exchangeIds.length)}) AND giver_id IN (${marks(giverIds.length, exchangeIds.length + 1)})`)
+    .bind(...exchangeIds, ...giverIds)
+    .all<{ exchange_id: string; giver_id: string; recipient_id: string; revealed_at: number | null }>();
+  for (const r of results) out.get(r.exchange_id)!.set(r.giver_id, r.revealed_at ? { revealed: true, recipientId: r.recipient_id } : { revealed: false });
+  return out;
 }
 
 /** Draw this Giver's name: mark it Revealed and return the Recipient, or null if there is no slip. */

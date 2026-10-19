@@ -13,9 +13,8 @@ import {
 const env = getEnv();
 const viewer = Astro.locals.viewer;
 const groupId = Astro.params.id!;
-const group = await getGroup(env.DB, groupId);
-if (!group || !(await canView(env.DB, viewer, groupId))) return new Response('Not found.', { status: 404 });
-const organizing = await canOrganize(env.DB, viewer, groupId);
+const [group, viewable, organizing] = await Promise.all([getGroup(env.DB, groupId), canView(env.DB, viewer, groupId), canOrganize(env.DB, viewer, groupId)]);
+if (!group || !viewable) return new Response('Not found.', { status: 404 });
 let notice: { tone: 'success' | 'error'; text: string } | undefined;
 
 if (Astro.request.method === 'POST' && organizing) {
@@ -73,11 +72,13 @@ if (Astro.request.method === 'POST' && organizing) {
   }
 }
 
-const list = await members(env.DB, groupId);
+const [list, excl, exchanges] = await Promise.all([
+  members(env.DB, groupId),
+  organizing ? exclusions(env.DB, groupId) : Promise.resolve([] as [string, string][]),
+  exchangesOf(env.DB, groupId),
+]);
 const people = await peopleMap(env, list.map((m) => m.personId));
 const sorted = [...list].sort((a, b) => (people.get(a.personId)?.name ?? '').localeCompare(people.get(b.personId)?.name ?? ''));
-const excl = organizing ? await exclusions(env.DB, groupId) : [];
-const exchanges = await exchangesOf(env.DB, groupId);
 const emailed = sorted.filter((m) => people.get(m.personId)?.email);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
 const year = new Date().getUTCFullYear();

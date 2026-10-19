@@ -4,6 +4,8 @@
 interface ToolEnv {
   /** The Hub's HubApi entrypoint, over a service binding. */
   HUB: import('./lib/hub-contract').HubApiContract;
+  /** Development only: milliseconds to add to every database call (dev-latency.ts). */
+  DEV_DB_LATENCY_MS?: string;
   /** Groups, Exchanges, Pairings, Wish lists. */
   DB: D1Database;
   /** Development only: where the Hub runs (http://localhost:4331). Production: same origin. */

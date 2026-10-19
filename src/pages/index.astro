@@ -2,7 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Stocking from '../components/Stocking.astro';
 import { getEnv, u } from '../lib/env';
-import { allGroups, createGroup, exchangesOf, groupsOf, identities, members, participantsOf, peopleMap, slipsFor, type Exchange, type Slip } from '../lib/data';
+import { allGroups, createGroup, everyMemberId, exchangesOfPeople, groupsOf, identities, participantsAmong, peopleMap, slipsForMany, type Exchange } from '../lib/data';
 
 /**
  * Home: who you (and anyone you manage) are buying for this year, your Wish lists, and
@@ -24,36 +24,38 @@ if (Astro.request.method === 'POST' && viewer.isHubAdmin) {
   }
 }
 
-const groups = await groupsOf(env.DB, mine);
+// Four rounds of database work instead of one per Group per step: what is independent is
+// asked at once, and each step covers every Group in a single query.
+const admin = viewer.isHubAdmin;
+const [groups, exchanges, everyGroup, everyMember] = await Promise.all([
+  groupsOf(env.DB, mine),
+  exchangesOfPeople(env.DB, mine),
+  admin ? allGroups(env.DB) : Promise.resolve([]),
+  admin ? everyMemberId(env.DB) : Promise.resolve([] as string[]),
+]);
 
-// This year's Exchange in each Group: the soonest not yet done, else the latest.
-const current: { exchange: Exchange; groupName: string; mineIn: string[] }[] = [];
-for (const g of groups) {
-  const all = await exchangesOf(env.DB, g.id);
-  const live = all.filter((x) => x.state !== 'done').sort((a, b) => a.giftDate.localeCompare(b.giftDate))[0];
-  if (!live) continue;
-  const parts = await participantsOf(env.DB, live.id);
-  const mineIn = mine.filter((p) => parts.includes(p));
-  if (mineIn.length) current.push({ exchange: live, groupName: g.name, mineIn });
-}
-const slips = new Map<string, Map<string, Slip>>();
-for (const c of current) slips.set(c.exchange.id, await slipsFor(env.DB, c.exchange.id, c.mineIn));
+// This year's Exchange in each Group: the soonest not yet done.
+const live = groups.flatMap((g) => {
+  const x = exchanges.filter((e) => e.groupId === g.id && e.state !== 'done').sort((a, b) => a.giftDate.localeCompare(b.giftDate))[0];
+  return x ? [{ exchange: x, groupName: g.name }] : [];
+});
+const liveIds = live.map((l) => l.exchange.id);
+const [taking, slips] = await Promise.all([participantsAmong(env.DB, liveIds, mine), slipsForMany(env.DB, liveIds, mine)]);
+const current: { exchange: Exchange; groupName: string; mineIn: string[] }[] = live
+  .map((l) => ({ ...l, mineIn: mine.filter((p) => taking.get(l.exchange.id)!.includes(p)) }))
+  .filter((c) => c.mineIn.length);
 const revealedNow = Astro.url.searchParams.get('revealed');
 
-const allIds = [...mine, ...[...slips.values()].flatMap((m) => [...m.values()].flatMap((s) => (s.revealed ? [s.recipientId] : [])))];
-const people = await peopleMap(env, allIds);
+// One call to the Hub for every name the page shows.
+const revealedIds = [...slips.values()].flatMap((m) => [...m.values()].flatMap((s) => (s.revealed ? [s.recipientId] : [])));
+const people = await peopleMap(env, [...mine, ...revealedIds, ...(admin ? [viewer.id, ...everyMember] : [])]);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
 
 // The Hub Admin's view: every Group, and who could organise a new one.
-const everyGroup = viewer.isHubAdmin ? await allGroups(env.DB) : [];
 const others = everyGroup.filter((g) => !groups.some((m) => m.id === g.id));
-let candidates: { id: string; name: string }[] = [];
-if (viewer.isHubAdmin) {
-  const ids = new Set<string>([viewer.id]);
-  for (const g of everyGroup) for (const m of await members(env.DB, g.id)) ids.add(m.personId);
-  const map = await peopleMap(env, [...ids]);
-  candidates = [...map.values()].filter((p) => p.email).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
-}
+const candidates = admin
+  ? [...new Set([viewer.id, ...everyMember])].map((id) => people.get(id)!).filter((p) => p.email).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name))
+  : [];
 const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 ---
 
