@@ -48,5 +48,5 @@ The seed is the Hub's made-up family with last year's exchange already drawn.
 
 ## Deploying
 
-After the Hub: `wrangler d1 create gift-exchange`, put the id in `wrangler.jsonc`, then
+After the Hub (the D1 database `gift-exchange` already exists), run
 `npm run deploy`. No secrets: mail goes through the Hub.

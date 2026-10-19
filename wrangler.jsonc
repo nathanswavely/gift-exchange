@@ -9,6 +9,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gift-exchange",
+  // The main Cloudflare account, which holds the swavely.lol zone.
+  "account_id": "98521ca2e365abe021315e836c0a31ed",
   "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -26,13 +28,13 @@
     { "binding": "HUB", "service": "swavely-lol", "entrypoint": "HubApi" }
   ],
 
-  // Groups, Exchanges, Pairings, Wish lists (migrations/). Create it with
-  // `wrangler d1 create gift-exchange` and put its id here.
+  // Groups, Exchanges, Pairings, Wish lists (migrations/). Created 2026-10-19 in the
+  // main account; locally the Vite plugin provides one under .wrangler/state.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "gift-exchange",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "226cb941-4982-4b0a-86a5-7673679488c7",
       "migrations_dir": "migrations"
     }
   ]
