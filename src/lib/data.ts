@@ -194,14 +194,39 @@ export async function setFixed(db: D1Database, exchangeId: string, giverId: stri
   await db.batch(stmts);
 }
 
-/** A Giver's own Pairings, for the People this Viewer acts as. The only window onto a draw. */
-export async function pairingsFor(db: D1Database, exchangeId: string, giverIds: string[]): Promise<Map<string, string>> {
+/**
+ * A Giver's own slip, for the People this Viewer acts as: the only window onto a draw.
+ * Until the Giver Reveals it (ADR-0003) the Recipient is not returned at all, so no page
+ * can leak it, not even in its HTML.
+ */
+export type Slip = { revealed: false } | { revealed: true; recipientId: string };
+
+export async function slipsFor(db: D1Database, exchangeId: string, giverIds: string[]): Promise<Map<string, Slip>> {
   if (!giverIds.length) return new Map();
   const { results } = await db
-    .prepare(`SELECT giver_id, recipient_id FROM pairings WHERE exchange_id = ?1 AND giver_id IN (${marks(giverIds.length, 2)})`)
+    .prepare(`SELECT giver_id, recipient_id, revealed_at FROM pairings WHERE exchange_id = ?1 AND giver_id IN (${marks(giverIds.length, 2)})`)
     .bind(exchangeId, ...giverIds)
-    .all<{ giver_id: string; recipient_id: string }>();
-  return new Map(results.map((r) => [r.giver_id, r.recipient_id]));
+    .all<{ giver_id: string; recipient_id: string; revealed_at: number | null }>();
+  return new Map(results.map((r) => [r.giver_id, r.revealed_at ? { revealed: true, recipientId: r.recipient_id } : { revealed: false }]));
+}
+
+/** Draw this Giver's name: mark it Revealed and return the Recipient, or null if there is no slip. */
+export async function reveal(db: D1Database, exchangeId: string, giverId: string): Promise<string | null> {
+  await db.prepare('UPDATE pairings SET revealed_at = ?3 WHERE exchange_id = ?1 AND giver_id = ?2 AND revealed_at IS NULL').bind(exchangeId, giverId, now()).run();
+  const row = await db.prepare('SELECT recipient_id FROM pairings WHERE exchange_id = ?1 AND giver_id = ?2').bind(exchangeId, giverId).first<{ recipient_id: string }>();
+  return row?.recipient_id ?? null;
+}
+
+/**
+ * Who has drawn their name and who has not, for an Organizer (ADR-0003). Says who has
+ * looked, never what they saw.
+ */
+export async function revealProgress(db: D1Database, exchangeId: string): Promise<{ drawn: number; waiting: string[] }> {
+  const { results } = await db
+    .prepare('SELECT giver_id, revealed_at FROM pairings WHERE exchange_id = ?1')
+    .bind(exchangeId)
+    .all<{ giver_id: string; revealed_at: number | null }>();
+  return { drawn: results.filter((r) => r.revealed_at).length, waiting: results.filter((r) => !r.revealed_at).map((r) => r.giver_id) };
 }
 
 /**
@@ -229,9 +254,9 @@ async function previousPairings(db: D1Database, ex: Exchange): Promise<Map<strin
 }
 
 /** The whole current draw, for the solver only. Never returned to a page. */
-async function currentPairings(db: D1Database, exchangeId: string): Promise<Map<string, string>> {
-  const { results } = await db.prepare('SELECT giver_id, recipient_id FROM pairings WHERE exchange_id = ?1').bind(exchangeId).all<{ giver_id: string; recipient_id: string }>();
-  return new Map(results.map((r) => [r.giver_id, r.recipient_id]));
+async function currentPairings(db: D1Database, exchangeId: string): Promise<Map<string, { recipientId: string; revealedAt: number | null }>> {
+  const { results } = await db.prepare('SELECT giver_id, recipient_id, revealed_at FROM pairings WHERE exchange_id = ?1').bind(exchangeId).all<{ giver_id: string; recipient_id: string; revealed_at: number | null }>();
+  return new Map(results.map((r) => [r.giver_id, { recipientId: r.recipient_id, revealedAt: r.revealed_at }]));
 }
 
 export type DrawOutcome =
@@ -239,21 +264,27 @@ export type DrawOutcome =
   | { ok: false; reason: 'too_few' | 'impossible' | 'needs_repeats'; repeats?: number };
 
 /**
- * Draw, Redraw or Re-pair an Exchange and tell each affected Giver to look. `mode`:
- * 'draw' and 'redraw' make every Pairing; 'repair' keeps all it can.
+ * Draw, Redraw or Re-pair an Exchange and tell each affected Giver there is a name
+ * waiting for them. `mode`: 'draw' and 'redraw' make every Pairing and put every slip in
+ * the stocking; 'repair' keeps all it can, and a Giver whose Recipient did not change
+ * keeps their Reveal (ADR-0003).
  */
 export async function runDraw(env: ToolEnv, ex: Exchange, mode: 'draw' | 'redraw' | 'repair', allowRepeats: boolean): Promise<DrawOutcome> {
   const db = env.DB;
   const [participants, excl, fixed, previous] = await Promise.all([participantsOf(db, ex.id), exclusions(db, ex.groupId), fixedOf(db, ex.id), previousPairings(db, ex)]);
-  const current = mode === 'repair' ? new Map([...(await currentPairings(db, ex.id))].filter(([g]) => participants.includes(g))) : undefined;
+  const before = mode === 'repair' ? new Map([...(await currentPairings(db, ex.id))].filter(([g]) => participants.includes(g))) : undefined;
+  const current = before ? new Map([...before].map(([g, p]) => [g, p.recipientId])) : undefined;
 
   const result = draw({ participants, exclusions: excl, fixed, previous, current, allowRepeats });
   if (!result.ok) return result;
 
   const t = now();
+  const kept = (g: string, r: string) => (before?.get(g)?.recipientId === r ? before.get(g)!.revealedAt : null);
   await db.batch([
     db.prepare('DELETE FROM pairings WHERE exchange_id = ?1').bind(ex.id),
-    ...[...result.pairs].map(([g, r]) => db.prepare('INSERT INTO pairings (exchange_id, giver_id, recipient_id, made_at) VALUES (?1, ?2, ?3, ?4)').bind(ex.id, g, r, t)),
+    ...[...result.pairs].map(([g, r]) =>
+      db.prepare('INSERT INTO pairings (exchange_id, giver_id, recipient_id, made_at, revealed_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(ex.id, g, r, t, kept(g, r)),
+    ),
     db.prepare('UPDATE exchanges SET drawn_at = ?2 WHERE id = ?1').bind(ex.id, t),
   ]);
 
@@ -261,12 +292,11 @@ export async function runDraw(env: ToolEnv, ex: Exchange, mode: 'draw' | 'redraw
   if (tell.length) {
     const again = mode !== 'draw';
     await env.HUB.notify(tell, {
-      subject: again ? `You have a new name for ${ex.name}` : `Names are drawn for ${ex.name}`,
-      lines: [
-        again ? `The names for ${ex.name} changed, and yours with them.` : `Names are drawn for ${ex.name}.`,
-        'Sign in to see who you are buying for. (We never put the name in an email.)',
-      ],
-      cta: { label: 'See who you have', path: u(`/exchange/${ex.id}`) },
+      subject: again ? `Draw again for ${ex.name}` : `A name is waiting for you in ${ex.name}`,
+      lines: again
+        ? [`The names for ${ex.name} changed, and yours with them, so your slip went back in the stocking.`, 'Sign in and draw again. We never put names in an email.']
+        : [`The names for ${ex.name} are in the stocking.`, 'Sign in and draw yours. We never put names in an email.'],
+      cta: { label: again ? 'Draw again' : 'Draw your name', path: u(`/exchange/${ex.id}`) },
     });
   }
   return { ok: true, told: tell.length, repeats: result.repeats };

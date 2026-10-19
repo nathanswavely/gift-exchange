@@ -1,8 +1,9 @@
 ---
 import Base from '../../layouts/Base.astro';
+import Stocking from '../../components/Stocking.astro';
 import { getEnv, u } from '../../lib/env';
 import {
-  canOrganize, canView, fixedOf, getExchange, getGroup, identities, members, pairingsFor, participantsOf, peopleMap, runDraw, setFixed, setParticipants, unpairedGivers,
+  canOrganize, canView, fixedOf, getExchange, getGroup, identities, members, participantsOf, peopleMap, revealProgress, runDraw, slipsFor, setFixed, setParticipants, unpairedGivers,
   updateExchange, type DrawOutcome,
 } from '../../lib/data';
 
@@ -63,9 +64,11 @@ const parts = await participantsOf(env.DB, ex.id);
 const groupMembers = await members(env.DB, ex.groupId);
 const fixed = organizing ? await fixedOf(env.DB, ex.id) : [];
 const mineIn = identities(viewer).filter((p) => parts.includes(p));
-const mine = await pairingsFor(env.DB, ex.id, mineIn);
+const mine = await slipsFor(env.DB, ex.id, mineIn);
 const unpaired = organizing && fresh.state === 'drawn' ? await unpairedGivers(env.DB, ex.id) : 0;
-const people = await peopleMap(env, [...groupMembers.map((m) => m.personId), ...parts, ...mine.values()]);
+const progress = organizing && fresh.state === 'drawn' ? await revealProgress(env.DB, ex.id) : null;
+const revealedNow = Astro.url.searchParams.get('revealed');
+const people = await peopleMap(env, [...groupMembers.map((m) => m.personId), ...parts, ...[...mine.values()].flatMap((m) => (m.revealed ? [m.recipientId] : []))]);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
 const sortedMembers = [...groupMembers].sort((a, b) => nameOf(a.personId).localeCompare(nameOf(b.personId)));
 const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -74,9 +77,9 @@ const done = Astro.url.searchParams.get('done');
 const told = Astro.url.searchParams.get('told');
 const repeats = Number(Astro.url.searchParams.get('repeats') ?? 0);
 const doneText = done && {
-  draw: `Names are drawn. ${told} ${told === '1' ? 'person was' : 'people were'} emailed to sign in and look.`,
-  redraw: `Drawn again. Everyone (${told}) was emailed to look again.`,
-  repair: told === '0' ? 'Saved. Nobody needed a new name.' : `Re-paired. ${told} ${told === '1' ? 'Giver has' : 'Givers have'} a new name and ${told === '1' ? 'was' : 'were'} emailed.`,
+  draw: `The names are in the stocking. ${told} ${told === '1' ? 'person was' : 'people were'} emailed to come draw theirs.`,
+  redraw: `Drawn again. Everyone (${told}) was emailed to come draw again.`,
+  repair: told === '0' ? 'Saved. Nobody needed a new name.' : `Re-paired. ${told} ${told === '1' ? 'Giver has' : 'Givers have'} a new name in the stocking and ${told === '1' ? 'was' : 'were'} emailed to draw again.`,
 }[done as 'draw' | 'redraw' | 'repair'];
 const failText = outcome && !outcome.ok && {
   too_few: 'It takes at least two people to draw names.',
@@ -109,18 +112,24 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
   {mineIn.length > 0 && (
     <section class="lt-card">
       {mineIn.map((giver) => {
-        const r = mine.get(giver);
-        const lead = giver === viewer.id ? 'You are buying for' : `${nameOf(giver)} is buying for`;
-        return r ? (
-          <div class="recipient" style="padding:0.4rem 0">
-            <div><div class="lead">{lead}</div><div class="who-for">{nameOf(r)}</div></div>
-            <a class="lt-btn lt-btn-primary" href={u(`/list/${r}`)}>See their wish list</a>
-          </div>
-        ) : (
-          <p class="lt-muted" style="margin:0.3rem 0">
-            {giver === viewer.id ? 'You' : nameOf(giver)}:{' '}
-            {fresh.state === 'open' ? 'names are not drawn yet.' : 'your name was withdrawn, because the people taking part changed after the draw. An Organizer will re-pair, and you will get an email with a new one.'}
-          </p>
+        const slip = mine.get(giver);
+        if (fresh.state === 'open') return <p class="lt-muted" style="margin:0.3rem 0">{giver === viewer.id ? 'You' : nameOf(giver)}: names are not drawn yet.</p>;
+        if (!slip) {
+          return (
+            <p class="lt-muted" style="margin:0.3rem 0">
+              {giver === viewer.id ? 'Your' : `${nameOf(giver)}'s`} name was withdrawn, because the people taking part changed after the draw. An Organizer will re-pair, and you will get an email to draw again.
+            </p>
+          );
+        }
+        return (
+          <Stocking
+            exchangeId={fresh.id}
+            giverId={giver}
+            whose={giver === viewer.id ? 'you' : nameOf(giver)}
+            recipient={slip.revealed ? { id: slip.recipientId, name: nameOf(slip.recipientId) } : undefined}
+            rising={revealedNow === giver}
+            back={u(`/exchange/${fresh.id}`)}
+          />
         );
       })}
     </section>
@@ -135,10 +144,16 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
           <form method="post" class="lt-actions">
             <input type="hidden" name="action" value="draw" />
             <button class="lt-btn lt-btn-primary" type="submit">Draw names ({parts.length} people)</button>
-            <span class="lt-muted small">Everyone taking part gets an email to sign in and look. Nobody, you included, can see anyone else's.</span>
+            <span class="lt-muted small">Everyone taking part gets an email to come draw their name. Nobody, you included, can see anyone else's.</span>
           </form>
         ) : (
           <div class="stack">
+            {progress && (
+              <p style="margin:0">
+                <strong>{progress.drawn} of {progress.drawn + progress.waiting.length}</strong> have drawn their name.
+                {progress.waiting.length > 0 && <span class="lt-muted"> Waiting on {progress.waiting.map(nameOf).sort().join(', ')}.</span>}
+              </p>
+            )}
             {unpaired > 0 && (
               <div class="lt-callout lt-tone-warning">
                 <p style="margin:0 0 0.5rem">

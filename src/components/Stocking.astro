@@ -1,0 +1,101 @@
+---
+import { u } from '../lib/env';
+
+/**
+ * A Giver's slip, as a knit stocking with a woven name label inside (ADR-0003). Before
+ * the Reveal it is a button: tap it, the stocking swings on its hook, and the label slides
+ * up out of the cuff with the Recipient's name. After, the label stays out, with the way
+ * to their Wish list. The name is never in the page until it has been drawn.
+ *
+ * Without JavaScript the stocking is a plain form that posts to /exchange/<id>/reveal and
+ * comes back with ?revealed=<giver>, which `rising` turns into the same animation on load.
+ * With reduced motion the label simply appears.
+ */
+interface Props {
+  exchangeId: string;
+  giverId: string;
+  /** "you", or a Managed Person's name: whose name is being drawn. */
+  whose: string;
+  /** Present once drawn. */
+  recipient?: { id: string; name: string };
+  /** Drawn on the request that rendered this page (no-JavaScript path): play the rise. */
+  rising?: boolean;
+  back: string;
+}
+const { exchangeId, giverId, whose, recipient, rising = false, back } = Astro.props;
+const yours = whose === 'you';
+const lead = yours ? 'You are buying for' : `${whose} is buying for`;
+---
+
+<div class:list={['stocking-slip', { drawn: !!recipient, rising }]} data-slip>
+  <form method="post" action={u(`/exchange/${exchangeId}/reveal`)} class="stocking-form">
+    <input type="hidden" name="giver" value={giverId} />
+    <input type="hidden" name="back" value={back} />
+    <button type="submit" class="stocking-stage" aria-label={yours ? 'Draw your name' : `Draw ${whose}'s name`} disabled={!!recipient}>
+      <span class="label-window"><span class="name-label lt-tag" aria-live="polite">{recipient?.name ?? ''}</span></span>
+      <svg class="stocking" viewBox="0 0 120 150" aria-hidden="true">
+        <defs>
+          <pattern id={`knit-${giverId}`} width="8" height="7" patternUnits="userSpaceOnUse">
+            <path d="M0 0 L4 5 L8 0" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="1.4" />
+          </pattern>
+        </defs>
+        <path class="stocking-hook" d="M60 4 q8 0 8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+        <path class="stocking-body" d="M34 34 L88 34 L88 96 Q88 132 56 138 L26 140 Q8 140 8 124 Q8 110 24 106 L34 104 Z" />
+        <path d="M34 34 L88 34 L88 96 Q88 132 56 138 L26 140 Q8 140 8 124 Q8 110 24 106 L34 104 Z" fill={`url(#knit-${giverId})`} />
+        <path class="stocking-toe" d="M8 124 Q8 110 24 106 L30 105 Q30 126 34 139 L26 140 Q8 140 8 124 Z" />
+        <path class="stocking-heel" d="M88 96 Q88 132 56 138 L62 130 Q76 122 76 100 L88 98 Z" />
+        <rect class="stocking-cuff" x="28" y="12" width="66" height="26" rx="5" />
+        <rect x="32" y="16" width="58" height="18" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="3 2.5" />
+      </svg>
+    </button>
+  </form>
+  <div class="stocking-caption">
+    {recipient ? (
+      <>
+        <div class="lead">{lead}</div>
+        <a class="lt-btn lt-btn-primary" href={u(`/list/${recipient.id}`)}>See their wish list</a>
+      </>
+    ) : (
+      <>
+        <div class="lead">{yours ? 'A name is waiting for you.' : `A name is waiting for ${whose}.`}</div>
+        <div class="hint lt-muted small">Tap the stocking to draw it.</div>
+      </>
+    )}
+  </div>
+</div>
+
+<script>
+  /** Draw in place: swing the stocking while the name is fetched, then raise the label. */
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  for (const slip of document.querySelectorAll<HTMLElement>('[data-slip]')) {
+    const form = slip.querySelector<HTMLFormElement>('.stocking-form')!;
+    form.addEventListener('submit', async (e) => {
+      if (slip.classList.contains('drawn') || slip.classList.contains('drawing')) { e.preventDefault(); return; }
+      e.preventDefault();
+      slip.classList.add('drawing');
+      const res: Promise<{ name: string; listHref: string }> = fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } }).then((r) => (r.ok ? r.json() : Promise.reject(r)));
+      try {
+        const [data] = await Promise.all([res, wait(still ? 0 : 1100)]);
+        slip.querySelector('.name-label')!.textContent = data.name;
+        const caption = slip.querySelector<HTMLElement>('.stocking-caption')!;
+        const lead = caption.querySelector<HTMLElement>('.lead')!;
+        lead.textContent = lead.textContent!.startsWith('A name is waiting for you') ? 'You are buying for' : lead.textContent!.replace(/^A name is waiting for (.*)\.$/, '$1 is buying for');
+        const hint = caption.querySelector('.hint');
+        const link = document.createElement('a');
+        link.className = 'lt-btn lt-btn-primary';
+        link.href = data.listHref;
+        link.textContent = 'See their wish list';
+        if (hint) hint.replaceWith(link);
+        else caption.appendChild(link);
+        slip.classList.remove('drawing');
+        slip.classList.add('drawn');
+        slip.querySelector<HTMLButtonElement>('.stocking-stage')!.disabled = true;
+      } catch {
+        slip.classList.remove('drawing');
+        form.submit(); // let the server answer the plain way
+      }
+    });
+  }
+</script>

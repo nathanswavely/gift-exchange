@@ -1,7 +1,8 @@
 ---
 import Base from '../layouts/Base.astro';
+import Stocking from '../components/Stocking.astro';
 import { getEnv, u } from '../lib/env';
-import { allGroups, createGroup, exchangesOf, groupsOf, identities, members, pairingsFor, participantsOf, peopleMap, type Exchange } from '../lib/data';
+import { allGroups, createGroup, exchangesOf, groupsOf, identities, members, participantsOf, peopleMap, slipsFor, type Exchange, type Slip } from '../lib/data';
 
 /**
  * Home: who you (and anyone you manage) are buying for this year, your Wish lists, and
@@ -35,10 +36,11 @@ for (const g of groups) {
   const mineIn = mine.filter((p) => parts.includes(p));
   if (mineIn.length) current.push({ exchange: live, groupName: g.name, mineIn });
 }
-const pairings = new Map<string, Map<string, string>>();
-for (const c of current) pairings.set(c.exchange.id, await pairingsFor(env.DB, c.exchange.id, c.mineIn));
+const slips = new Map<string, Map<string, Slip>>();
+for (const c of current) slips.set(c.exchange.id, await slipsFor(env.DB, c.exchange.id, c.mineIn));
+const revealedNow = Astro.url.searchParams.get('revealed');
 
-const allIds = [...mine, ...[...pairings.values()].flatMap((m) => [...m.values()])];
+const allIds = [...mine, ...[...slips.values()].flatMap((m) => [...m.values()].flatMap((s) => (s.revealed ? [s.recipientId] : [])))];
 const people = await peopleMap(env, allIds);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
 
@@ -57,7 +59,7 @@ const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US'
 
 <Base title="Gift exchange">
   <h1 class="page">Gift exchange</h1>
-  <p class="page-lead">Who you're buying for, and what everyone would like.</p>
+  <p class="page-lead">Draw your name, then see what they would like.</p>
 
   {current.length === 0 && (
     <div class="lt-card">
@@ -72,18 +74,23 @@ const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US'
         <h2 style="margin:0.15rem 0 0.25rem"><a href={u(`/exchange/${exchange.id}`)}>{exchange.name}</a></h2>
         <p class="lt-muted small" style="margin:0 0 0.75rem">Gifts on {fmt(exchange.giftDate)}{exchange.budget && <> · {exchange.budget}</>}</p>
         {mineIn.map((giver) => {
-          const recipient = pairings.get(exchange.id)?.get(giver);
-          const lead = giver === viewer.id ? 'You are buying for' : `${nameOf(giver)} is buying for`;
-          return exchange.state === 'open' || !recipient ? (
-            <p class="lt-muted" style="margin:0.25rem 0">{giver === viewer.id ? 'Names are not drawn yet.' : `${nameOf(giver)}: names are not drawn yet.`}</p>
-          ) : (
-            <div class="recipient" style="padding:0.5rem 0">
-              <div>
-                <div class="lead">{lead}</div>
-                <div class="who-for">{nameOf(recipient)}</div>
-              </div>
-              <a class="lt-btn lt-btn-primary" href={u(`/list/${recipient}`)}>See their wish list</a>
-            </div>
+          const slip = slips.get(exchange.id)?.get(giver);
+          const whose = giver === viewer.id ? 'you' : nameOf(giver);
+          if (exchange.state === 'open') {
+            return <p class="lt-muted" style="margin:0.25rem 0">{giver === viewer.id ? 'Names are not drawn yet.' : `${nameOf(giver)}: names are not drawn yet.`}</p>;
+          }
+          if (!slip) {
+            return <p class="lt-muted" style="margin:0.25rem 0">{giver === viewer.id ? 'Your' : `${nameOf(giver)}'s`} name was withdrawn when someone left. An Organizer will put a new one in the stocking.</p>;
+          }
+          return (
+            <Stocking
+              exchangeId={exchange.id}
+              giverId={giver}
+              whose={whose}
+              recipient={slip.revealed ? { id: slip.recipientId, name: nameOf(slip.recipientId) } : undefined}
+              rising={revealedNow === giver}
+              back={u('/')}
+            />
           );
         })}
       </section>

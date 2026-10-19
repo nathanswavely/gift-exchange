@@ -175,7 +175,7 @@ async function main() {
   const asOrganizer = (await get(`${toolAt}/exchange/x_draw`, 'p_homer')).text;
   check(asOrganizer.includes('Re-pair now') && asOrganizer.includes('One person taking part has'), 'Homer, organizing, is asked to Re-pair');
   const asGiver = (await get(`${toolAt}/exchange/x_draw`, viewerFor(lisasGiver))).text;
-  check(asGiver.includes('your name was withdrawn'), "Lisa's Giver is told their name was withdrawn");
+  check(asGiver.toLowerCase().includes('your name was withdrawn'), "Lisa's Giver is told their name was withdrawn");
   check(pairings('x_2025').size === 6, "last year's history keeps everyone else's Pairings");
   check(participants('x_open').length === 7, 'the open Exchange drops her as a Participant');
   check(toolSql(`SELECT id FROM items WHERE id IN ('i_4', 'i_5')`).length === 0, 'her Wish list is gone, and the Claim on it');
@@ -197,7 +197,7 @@ async function main() {
   const tight = pairings('x_tnow');
   check(tight.size === 1 && tight.get('p_selma') === 'p_patty', 'the tight Exchange keeps the Pairing that did not involve him and drops the rest');
   check(participants('x_tnow').join() === 'p_patty,p_selma', 'and goes on with Patty and Selma');
-  check((await get(`${toolAt}/exchange/x_tnow`, 'p_patty')).text.includes('your name was withdrawn'), 'Patty is told her name was withdrawn');
+  check((await get(`${toolAt}/exchange/x_tnow`, 'p_patty')).text.toLowerCase().includes('your name was withdrawn'), 'Patty is told her name was withdrawn');
   const tightRepair = await post(`${toolAt}/exchange/x_tnow`, 'p_homer', { action: 'repair' });
   check(tightRepair.status === 200 && tightRepair.text.includes('No draw avoids last year entirely'), 'Re-pairing it asks before allowing a Repeat');
   check(pairings('x_draw').size === 5 && participants('x_draw').length === 6, 'the Simpson draw drops Abe too, and waits again');
