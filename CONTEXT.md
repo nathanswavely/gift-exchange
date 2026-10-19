@@ -65,6 +65,15 @@ rules. Run by an **Organizer**. After it the Pairings change only by **Re-pairin
 **Redraw**.
 _Avoid_: Shuffle, match, randomise
 
+**Reveal**:
+A **Giver** drawing their own name: the moment, on their own time after the **Draw**, when
+they reach into the hat and see their **Recipient** for the first time. To them it is the
+draw, and the page says "draw your name"; the Pairing was made at the Draw and the Reveal
+only shows it. Done for a **Managed** Person by whoever manages them. A **Re-pairing** or
+**Redraw** that changes a Giver's Recipient puts their slip back, and they Reveal again.
+The Organizer sees who has and has not Revealed, never what anyone drew.
+_Avoid_: Draw (that is the Organizer's), pick, open, unwrap
+
 **Redraw**:
 A whole new **Draw** for an Exchange already drawn, every Pairing made again and every
 Giver told to look again. The answer when someone draws a person they had last year and
