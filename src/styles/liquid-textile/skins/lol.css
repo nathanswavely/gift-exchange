@@ -1,0 +1,126 @@
+/**
+ * Liquid Textile — Skin: swavely.lol
+ *
+ * A skin is a brand: tokens only (ADR-0001). This one is the family hub's: a flannel
+ * shirt by day (oatmeal ground, pine and cranberry inks) and a wool blanket by night
+ * (warm charcoal, the same inks lifted). Light and dark, on purpose: it is read on a
+ * phone in bed as often as at a desk. Pair it with the textile finish.
+ *
+ *   <html data-theme="light" data-finish="textile">
+ *   @import 'liquid-textile/index.css';
+ *   @import 'liquid-textile/skins/lol.css';
+ *
+ * Faces are the foundation's own (Space Grotesk, Shantell Sans for display), which the
+ * app self-hosts; this file sets only colours and radii.
+ *
+ * Contrast (WCAG AA, against --lt-color-bg unless stated):
+ *   light: text 13.4:1 · muted 5.8:1 (6.6:1 on raised) · primary-as-text 5.6:1 ·
+ *          white on primary 6.4:1 · accent-as-text 5.1:1 · white on accent 5.8:1 ·
+ *          error 5.7:1 · white on error 6.5:1 · success 4.8:1 · white on success
+ *          5.5:1 · ink on warning 6.9:1 · warning-text 5.8:1 · white on muted 6.6:1 ·
+ *          on the tints, text 12.4:1 and muted 5.3:1 at worst
+ *   dark:  text 14.2:1 · muted 6.8:1 (5.7:1 on raised) · primary 8.8:1 · ink on
+ *          primary 8.8:1 · accent 7.4:1 · ink on accent 7.4:1 · error 6.2:1 (5.2:1
+ *          on raised) · ink on error 6.2:1 · success 9.0:1 · ink on success 9.0:1 ·
+ *          ink on warning 9.2:1 · warning-text 9.2:1 · ink on muted 6.8:1 ·
+ *          on the tints, text 11.8:1 and muted 5.7:1 at worst
+ */
+
+:root {
+  --lt-radius-control: 6px;
+  --lt-radius-panel: 10px;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --lt-color-bg: #f5efe6;          /* oatmeal flannel */
+  --lt-color-surface: #fbf7f1;
+  --lt-color-raised: #ffffff;
+  --lt-color-text: #2b2420;        /* bark */
+  --lt-color-text-muted: #665b53;
+  --lt-color-border: #e4dacd;
+  --lt-color-border-strong: #cbbcaa;
+
+  --lt-color-primary: #2d6a4f;     /* pine */
+  --lt-color-primary-hover: #245a42;
+  --lt-color-on-primary: #ffffff;
+  --lt-color-accent: #b23a48;      /* cranberry */
+  --lt-color-on-accent: #ffffff;
+  --lt-color-error: #b3261e;
+  --lt-color-on-error: #ffffff;
+  --lt-color-success: #4a7334;
+  --lt-color-on-success: #ffffff;
+  --lt-color-warning: #e3a21a;
+  --lt-color-on-warning: #2b2420;
+  --lt-color-warning-text: #7a5600;
+
+  --lt-color-success-bg: #e4ecdc;
+  --lt-color-info-bg: #e3eee8;
+  --lt-color-warning-bg: #f6ead0;
+  --lt-color-danger-bg: #f6e3e3;
+  --lt-color-on-muted: #ffffff;
+
+  --lt-color-overlay: rgba(43, 36, 32, 0.05);
+  --lt-color-overlay-hover: rgba(43, 36, 32, 0.09);
+  --lt-color-selected: rgba(45, 106, 79, 0.12);
+  --lt-color-shadow: rgba(43, 36, 32, 0.14);
+  --lt-color-scrim: rgba(43, 36, 32, 0.42);
+  --lt-color-glass: rgba(245, 239, 230, 0.92);
+  --lt-color-glass-heavy: rgba(245, 239, 230, 0.95);
+
+  /* The textile finish's cloth, matched to the ground. */
+  --lt-ink: #2b2420;
+  --lt-canvas: #f5efe6;
+  --lt-thread: #cbbcaa;
+  --lt-thread-heavy: #7d6f63;
+  --lt-shadow-color: rgba(43, 36, 32, 0.16);
+  --lt-seam-shade: 245, 239, 230;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --lt-color-bg: #1a1716;          /* charcoal wool */
+  --lt-color-surface: #221e1c;
+  --lt-color-raised: #2a2523;
+  --lt-color-text: #ece4da;
+  --lt-color-text-muted: #a89e93;
+  --lt-color-border: #332d2a;
+  --lt-color-border-strong: #463e3a;
+
+  /* Bright fills take ink text in dark, as the foundation's do. */
+  --lt-color-primary: #7cc5a0;
+  --lt-color-primary-hover: #98d4b5;
+  --lt-color-on-primary: #1a1716;
+  --lt-color-accent: #f08a95;
+  --lt-color-on-accent: #1a1716;
+  --lt-color-error: #f07167;
+  --lt-color-on-error: #1a1716;
+  --lt-color-success: #9cc47f;
+  --lt-color-on-success: #1a1716;
+  --lt-color-warning: #e6b23a;
+  --lt-color-on-warning: #1a1716;
+  --lt-color-warning-text: #e6b23a;
+
+  --lt-color-success-bg: #1f2a1f;
+  --lt-color-info-bg: #172724;
+  --lt-color-warning-bg: #2b2416;
+  --lt-color-danger-bg: #2d1a1c;
+  --lt-color-on-muted: #1a1716;
+
+  --lt-color-overlay: rgba(236, 228, 218, 0.04);
+  --lt-color-overlay-hover: rgba(236, 228, 218, 0.08);
+  --lt-color-selected: rgba(124, 197, 160, 0.14);
+  --lt-color-shadow: rgba(0, 0, 0, 0.45);
+  --lt-color-scrim: rgba(10, 8, 8, 0.6);
+  --lt-color-glass: rgba(26, 23, 22, 0.92);
+  --lt-color-glass-heavy: rgba(26, 23, 22, 0.95);
+
+  --lt-ink: #ece4da;
+  --lt-canvas: #1a1716;
+  --lt-thread: #3a3330;
+  --lt-thread-heavy: #5a514b;
+  --lt-shadow-color: rgba(236, 228, 218, 0.07);
+  --lt-seam-shade: 26, 23, 22;
+}

@@ -1,0 +1,17 @@
+/**
+ * Liquid Textile — Textilemorphism Design System
+ * https://github.com/nathanswavely/liquid-textile
+ *
+ * Import this single file to get the full framework: the foundation
+ * (tokens and controls), then the expressive layer (shadows, borders,
+ * blends, patterns, textures, raw edges).
+ *
+ * base.css (element defaults) is not included. Import it yourself if you
+ * want bare inputs and headings to pick up the look.
+ */
+
+@import './foundation.css';
+@import './liquid-textile.css';
+@import './patterns.css';
+@import './textures.css';
+@import './raw.css';

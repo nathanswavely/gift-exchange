@@ -1,0 +1,146 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getEnv, u } from '../../lib/env';
+import { canSeeList, claim, cleanUrl, deleteItem, identities, itemOwner, itemsOf, peopleMap, saveItem, unclaim } from '../../lib/data';
+
+/**
+ * One Person's Wish list. Its Person, and whoever manages them, edit it. Everyone who
+ * shares a Group with them sees it and can Claim an Item. Claims are hidden from the
+ * Person whose list it is and shown to everyone else, managers included.
+ */
+const env = getEnv();
+const viewer = Astro.locals.viewer;
+const personId = Astro.params.id!;
+const mine = identities(viewer);
+
+if (!(await canSeeList(env.DB, viewer, personId))) return new Response('Not found.', { status: 404 });
+
+const editable = mine.includes(personId);
+const isOwn = personId === viewer.id;
+let error: string | undefined;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const itemId = String(form.get('item') ?? '') || undefined;
+
+  if ((action === 'save' || action === 'delete') && editable) {
+    if (action === 'delete' && itemId) await deleteItem(env.DB, personId, itemId);
+    if (action === 'save') {
+      const name = String(form.get('name') ?? '').trim().slice(0, 200);
+      const rawUrl = String(form.get('url') ?? '');
+      const url = cleanUrl(rawUrl);
+      if (!name) error = 'Give the item a name.';
+      else if (rawUrl.trim() && !url) error = 'That link does not look like a web address.';
+      else await saveItem(env.DB, personId, { id: itemId, name, url, note: String(form.get('note') ?? '').trim().slice(0, 500) || null, price: String(form.get('price') ?? '').trim().slice(0, 40) || null });
+    }
+  }
+  if ((action === 'claim' || action === 'unclaim') && itemId && !isOwn && (await itemOwner(env.DB, itemId)) === personId) {
+    if (action === 'claim') {
+      // Claim as yourself, or as someone you manage when they are the one giving.
+      const as = String(form.get('as') ?? viewer.id);
+      if (mine.includes(as) && as !== personId) await claim(env.DB, itemId, as);
+    } else {
+      await unclaim(env.DB, itemId, mine);
+    }
+  }
+  if (!error) return Astro.redirect(Astro.url.pathname, 303);
+}
+
+const items = await itemsOf(env.DB, personId, !isOwn);
+const people = await peopleMap(env, [personId, ...mine, ...items.flatMap((i) => (i.claimerId ? [i.claimerId] : []))]);
+const owner = people.get(personId)!;
+const nameOf = (id: string) => (id === viewer.id ? 'You' : people.get(id)?.name ?? 'Someone');
+const givers = mine.filter((m) => m !== personId);
+---
+
+<Base title={isOwn ? 'Your wish list' : `${owner.name}'s wish list`}>
+  <p class="crumbs"><a href={u('/')}>Gift exchange</a></p>
+  <h1 class="page">{isOwn ? 'Your wish list' : `${owner.name}'s wish list`}</h1>
+  <p class="page-lead">
+    {isOwn
+      ? "Everyone in your Groups can see this. When someone's getting something, you won't know. That's the point."
+      : editable
+        ? `You look after ${owner.name}'s list. You can see what people are getting, so nobody doubles up.`
+        : 'Tap "I\'m getting this" so nobody doubles up. ' + owner.name + " won't see it."}
+  </p>
+
+  {error && <div class="lt-callout lt-tone-error" style="margin-bottom:1rem">{error}</div>}
+
+  <section class="lt-card">
+    {items.length === 0 && <p class="lt-muted" style="margin:0">{editable ? 'Nothing here yet. Add the first thing below.' : 'Nothing on this list yet.'}</p>}
+    {items.map((i) => (
+      <div class={`lt-item${i.claimerId ? ' claimed' : ''}`}>
+        <div class="lt-item-main">
+          <div class="item-name">{i.url ? <a href={i.url} rel="noopener noreferrer nofollow" target="_blank">{i.name}</a> : i.name}</div>
+          {(i.price || i.note) && <div class="item-meta">{[i.price, i.note].filter(Boolean).join(' · ')}</div>}
+          {i.claimerId && <div class="item-meta"><span class="lt-tag lt-tone-success">{nameOf(i.claimerId)} {i.claimerId === viewer.id ? 'are' : 'is'} getting this</span></div>}
+          {editable && (
+            <details class="edit">
+              <summary>Edit</summary>
+              <form method="post" class="lt-form wide">
+                <input type="hidden" name="action" value="save" />
+                <input type="hidden" name="item" value={i.id} />
+                <label class="lt-label"><span>What</span><input class="lt-field" name="name" value={i.name} required /></label>
+                <div class="lt-field-row">
+                  <label class="lt-label"><span>Link</span><input class="lt-field" name="url" inputmode="url" value={i.url ?? ''} /></label>
+                  <label class="lt-label"><span>Rough price</span><input class="lt-field" name="price" value={i.price ?? ''} /></label>
+                </div>
+                <label class="lt-label"><span>Note</span><input class="lt-field" name="note" value={i.note ?? ''} placeholder="size, colour, which edition" /></label>
+                <div class="lt-actions">
+                  <button class="lt-btn lt-btn-primary lt-btn-sm" type="submit">Save</button>
+                </div>
+              </form>
+              <form method="post" style="margin-top:0.5rem">
+                <input type="hidden" name="action" value="delete" />
+                <input type="hidden" name="item" value={i.id} />
+                <button class="lt-btn lt-btn-danger lt-btn-sm" type="submit">Remove from list</button>
+              </form>
+            </details>
+          )}
+        </div>
+        {!isOwn && !editable && (
+          <div class="lt-item-actions">
+            {!i.claimerId && (
+              <form method="post" class="row">
+                <input type="hidden" name="action" value="claim" />
+                <input type="hidden" name="item" value={i.id} />
+                {givers.length > 1 && (
+                  <select class="lt-field" name="as" aria-label="Getting it for">
+                    {givers.map((g) => <option value={g}>{g === viewer.id ? 'Me' : `For ${nameOf(g)}`}</option>)}
+                  </select>
+                )}
+                <button class="lt-btn lt-btn-sm" type="submit">I'm getting this</button>
+              </form>
+            )}
+            {i.claimerId && mine.includes(i.claimerId) && (
+              <form method="post">
+                <input type="hidden" name="action" value="unclaim" />
+                <input type="hidden" name="item" value={i.id} />
+                <button class="lt-btn lt-btn-ghost lt-btn-sm" type="submit">Not anymore</button>
+              </form>
+            )}
+          </div>
+        )}
+      </div>
+    ))}
+  </section>
+
+  {editable && (
+    <>
+      <h2 class="section">Add something</h2>
+      <section class="lt-card">
+        <form method="post" class="lt-form wide">
+          <input type="hidden" name="action" value="save" />
+          <label class="lt-label"><span>What</span><input class="lt-field" name="name" required placeholder="A good flashlight" /></label>
+          <div class="lt-field-row">
+            <label class="lt-label"><span>Link <span class="lt-optional">(optional)</span></span><input class="lt-field" name="url" inputmode="url" /></label>
+            <label class="lt-label"><span>Rough price <span class="lt-optional">(optional)</span></span><input class="lt-field" name="price" placeholder="$25" /></label>
+          </div>
+          <label class="lt-label"><span>Note <span class="lt-optional">(optional)</span></span><input class="lt-field" name="note" placeholder="size, colour, which edition" /></label>
+          <div class="lt-actions"><button class="lt-btn lt-btn-primary" type="submit">Add to list</button></div>
+        </form>
+      </section>
+    </>
+  )}
+</Base>

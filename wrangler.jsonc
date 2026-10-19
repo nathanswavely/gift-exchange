@@ -1,0 +1,39 @@
+// The gift exchange Tool at swavely.lol/gifts (swavely-lol ADR-0001).
+//
+// An Astro server build on a Cloudflare Worker. Its route is more specific than the
+// Hub's swavely.lol/*, so Cloudflare sends /gifts and everything under it here. Who is
+// signed in comes from the Hub over the HUB service binding (its HubApi entrypoint);
+// the Hub also sends every email. Deploy the Hub first: this binding names it.
+//
+// No secrets of its own.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gift-exchange",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "routes": [
+    { "pattern": "swavely.lol/gifts*", "zone_name": "swavely.lol" }
+  ],
+
+  "observability": { "enabled": true },
+
+  "services": [
+    { "binding": "HUB", "service": "swavely-lol", "entrypoint": "HubApi" }
+  ],
+
+  // Groups, Exchanges, Pairings, Wish lists (migrations/). Create it with
+  // `wrangler d1 create gift-exchange` and put its id here.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gift-exchange",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

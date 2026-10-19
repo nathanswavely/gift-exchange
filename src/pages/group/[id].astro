@@ -1,0 +1,216 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getEnv, u } from '../../lib/env';
+import {
+  addMember, canOrganize, canView, createExchange, exchangesOf, exclusions, getGroup, members, peopleMap, removeMember, setExclusions, setOrganizer,
+} from '../../lib/data';
+
+/**
+ * A Group: its People, each with a link to their Wish list. Its Organizers also add
+ * and remove People, say who manages a Managed Person, set Exclusions (one way, with
+ * the other way offered), make others Organizers, and start each year's Exchange.
+ */
+const env = getEnv();
+const viewer = Astro.locals.viewer;
+const groupId = Astro.params.id!;
+const group = await getGroup(env.DB, groupId);
+if (!group || !(await canView(env.DB, viewer, groupId))) return new Response('Not found.', { status: 404 });
+const organizing = await canOrganize(env.DB, viewer, groupId);
+let notice: { tone: 'success' | 'error'; text: string } | undefined;
+
+if (Astro.request.method === 'POST' && organizing) {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const person = String(form.get('person') ?? '');
+  const inGroup = (await members(env.DB, groupId)).some((m) => m.personId === person);
+
+  if (action === 'add') {
+    const name = String(form.get('name') ?? '').trim();
+    const email = String(form.get('email') ?? '').trim().toLowerCase() || null;
+    if (!name && !email) notice = { tone: 'error', text: 'A name is needed.' };
+    else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) notice = { tone: 'error', text: 'That email address does not look right.' };
+    else {
+      const { person: p, existed } = await env.HUB.addPerson({ name, email, addedBy: viewer.id });
+      await addMember(env.DB, groupId, p.id);
+      if (!p.email) {
+        const managers = form.getAll('manager').map(String);
+        if (managers.length) await env.HUB.setManagers(p.id, managers);
+      } else {
+        await env.HUB.notify([p.id], {
+          subject: `You're in ${group.name}`,
+          lines: [`${viewer.name} added you to ${group.name}, a gift exchange on swavely.lol.`, 'Sign in with this address to start your wish list. We email you a code; there is no password.'],
+          cta: { label: 'Open the gift exchange', path: u('/') },
+        });
+      }
+      notice = { tone: 'success', text: existed ? `${p.name} was already on swavely.lol, and is now in ${group.name}.` : `${p.name} added.` };
+    }
+  } else if (inGroup && action === 'exclusions') {
+    await setExclusions(env.DB, groupId, person, form.getAll('never').map(String), form.getAll('mirror').map(String));
+    notice = { tone: 'success', text: 'Saved.' };
+  } else if (inGroup && action === 'managers') {
+    await env.HUB.setManagers(person, form.getAll('manager').map(String));
+    const name = String(form.get('name') ?? '').trim();
+    if (name) await env.HUB.renameManaged(person, name);
+    notice = { tone: 'success', text: 'Saved.' };
+  } else if (inGroup && (action === 'organizer-on' || action === 'organizer-off')) {
+    const all = await members(env.DB, groupId);
+    if (action === 'organizer-off' && all.filter((m) => m.organizer).length <= 1) notice = { tone: 'error', text: 'A Group needs at least one Organizer.' };
+    else { await setOrganizer(env.DB, groupId, person, action === 'organizer-on'); notice = { tone: 'success', text: 'Saved.' }; }
+  } else if (inGroup && action === 'remove') {
+    const all = await members(env.DB, groupId);
+    if (all.find((m) => m.personId === person)?.organizer && all.filter((m) => m.organizer).length <= 1) notice = { tone: 'error', text: 'A Group needs at least one Organizer.' };
+    else { await removeMember(env.DB, groupId, person); notice = { tone: 'success', text: 'Removed from the Group.' }; }
+  } else if (action === 'exchange') {
+    const name = String(form.get('name') ?? '').trim().slice(0, 80);
+    const giftDate = String(form.get('gift_date') ?? '');
+    const budget = String(form.get('budget') ?? '').trim().slice(0, 60) || null;
+    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(giftDate)) notice = { tone: 'error', text: 'An Exchange needs a name and a gift date.' };
+    else {
+      const all = await members(env.DB, groupId);
+      const id = await createExchange(env.DB, { groupId, name, giftDate, budget, participants: all.map((m) => m.personId), createdBy: viewer.id });
+      return Astro.redirect(u(`/exchange/${id}`), 303);
+    }
+  }
+}
+
+const list = await members(env.DB, groupId);
+const people = await peopleMap(env, list.map((m) => m.personId));
+const sorted = [...list].sort((a, b) => (people.get(a.personId)?.name ?? '').localeCompare(people.get(b.personId)?.name ?? ''));
+const excl = organizing ? await exclusions(env.DB, groupId) : [];
+const exchanges = await exchangesOf(env.DB, groupId);
+const emailed = sorted.filter((m) => people.get(m.personId)?.email);
+const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
+const year = new Date().getUTCFullYear();
+const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const stateTag = { open: ['Open', 'primary'], drawn: ['Drawn', 'success'], done: ['Done', 'muted'] } as const;
+---
+
+<Base title={group.name}>
+  <p class="crumbs"><a href={u('/')}>Gift exchange</a></p>
+  <h1 class="page">{group.name}</h1>
+  <p class="page-lead">{organizing ? 'You run this Group.' : `${list.length} people. Tap anyone to see their wish list.`}</p>
+
+  {notice && <div class={`lt-callout lt-tone-${notice.tone}`} style="margin-bottom:1rem">{notice.text}</div>}
+
+  <h2 class="section">Exchanges</h2>
+  <section class="lt-card">
+    {exchanges.length === 0 && <p class="lt-muted" style="margin:0">None yet.{organizing && ' Start this year\'s below.'}</p>}
+    {exchanges.map((x) => (
+      <div class="lt-item">
+        <div class="lt-item-main">
+          <a class="person-name" href={u(`/exchange/${x.id}`)}>{x.name}</a>
+          <span class={`lt-tag lt-tone-${stateTag[x.state][1]}`}>{stateTag[x.state][0]}</span>
+          <div class="lt-muted small">Gifts on {fmt(x.giftDate)}{x.budget && ` · ${x.budget}`}</div>
+        </div>
+      </div>
+    ))}
+  </section>
+
+  {organizing && (
+    <details class="edit" style="margin-top:0.75rem">
+      <summary>Start an Exchange</summary>
+      <section class="lt-card" style="margin-top:0.5rem">
+        <form method="post" class="lt-form wide">
+          <input type="hidden" name="action" value="exchange" />
+          <label class="lt-label"><span>Name</span><input class="lt-field" name="name" value={`${group.name} ${year}`} required /></label>
+          <div class="lt-field-row">
+            <label class="lt-label"><span>Gift date</span><input class="lt-field" type="date" name="gift_date" value={`${year}-12-25`} required /></label>
+            <label class="lt-label"><span>Budget <span class="lt-optional">(optional)</span></span><input class="lt-field" name="budget" placeholder="about $50" /></label>
+          </div>
+          <p class="lt-hint">Everyone in the Group takes part to start with; you can change that before drawing.</p>
+          <div class="lt-actions"><button class="lt-btn lt-btn-primary" type="submit">Start it</button></div>
+        </form>
+      </section>
+    </details>
+  )}
+
+  <h2 class="section">People</h2>
+  <section class="lt-card">
+    {sorted.map((m) => {
+      const p = people.get(m.personId)!;
+      const never = excl.filter(([g]) => g === m.personId).map(([, r]) => r);
+      const others = sorted.filter((o) => o.personId !== m.personId);
+      return (
+        <div class="lt-item">
+          <div class="lt-item-main">
+            <a class="person-name" href={u(`/list/${p.id}`)}>{p.name}</a>
+            {m.organizer && <span class="lt-tag lt-tone-primary">Organizer</span>}
+            {!p.email && <span class="lt-tag lt-tone-muted">Managed</span>}
+            {organizing && (
+              <div class="lt-muted small">
+                {!p.email && (p.managerIds.length ? `Managed by ${p.managerIds.map(nameOf).join(', ')}` : 'Nobody manages them yet')}
+                {!p.email && never.length > 0 && ' · '}
+                {never.length > 0 && `Never draws ${never.map(nameOf).join(', ')}`}
+              </div>
+            )}
+            {organizing && (
+              <details class="edit">
+                <summary>Edit</summary>
+                <form method="post" class="lt-form wide">
+                  <input type="hidden" name="action" value="exclusions" />
+                  <input type="hidden" name="person" value={p.id} />
+                  <span class="lt-label">{p.name} never draws…</span>
+                  {others.map((o) => (
+                    <div class="row">
+                      <label class="lt-check"><input type="checkbox" name="never" value={o.personId} checked={never.includes(o.personId)} /> {nameOf(o.personId)}</label>
+                      <label class="lt-check lt-muted small"><input type="checkbox" name="mirror" value={o.personId} checked={!never.includes(o.personId)} /> and the other way</label>
+                    </div>
+                  ))}
+                  <p class="lt-hint">"And the other way" also stops them drawing {p.name}. Leave it on for spouses.</p>
+                  <div class="lt-actions"><button class="lt-btn lt-btn-primary lt-btn-sm" type="submit">Save</button></div>
+                </form>
+                {!p.email && (
+                  <form method="post" class="lt-form wide">
+                    <input type="hidden" name="action" value="managers" />
+                    <input type="hidden" name="person" value={p.id} />
+                    <label class="lt-label"><span>Name</span><input class="lt-field" name="name" value={p.name} /></label>
+                    <span class="lt-label">Managed by</span>
+                    <div class="checks">
+                      {emailed.map((e) => <label class="lt-check"><input type="checkbox" name="manager" value={e.personId} checked={p.managerIds.includes(e.personId)} /> {nameOf(e.personId)}</label>)}
+                    </div>
+                    <div class="lt-actions"><button class="lt-btn lt-btn-sm" type="submit">Save</button></div>
+                  </form>
+                )}
+                <div class="lt-actions" style="margin-top:0.75rem">
+                  {p.email && (
+                    <form method="post">
+                      <input type="hidden" name="action" value={m.organizer ? 'organizer-off' : 'organizer-on'} />
+                      <input type="hidden" name="person" value={p.id} />
+                      <button class="lt-btn lt-btn-sm" type="submit">{m.organizer ? 'No longer an Organizer' : 'Make an Organizer'}</button>
+                    </form>
+                  )}
+                  <form method="post" onsubmit="return confirm('Remove from this Group? Their wish list stays theirs.')">
+                    <input type="hidden" name="action" value="remove" />
+                    <input type="hidden" name="person" value={p.id} />
+                    <button class="lt-btn lt-btn-danger lt-btn-sm" type="submit">Remove from Group</button>
+                  </form>
+                </div>
+              </details>
+            )}
+          </div>
+        </div>
+      );
+    })}
+  </section>
+
+  {organizing && (
+    <>
+      <h2 class="section">Add someone</h2>
+      <section class="lt-card">
+        <form method="post" class="lt-form wide">
+          <input type="hidden" name="action" value="add" />
+          <div class="lt-field-row">
+            <label class="lt-label"><span>Name</span><input class="lt-field" name="name" required /></label>
+            <label class="lt-label"><span>Email <span class="lt-optional">(leave empty for a child)</span></span><input class="lt-field" type="email" name="email" /></label>
+          </div>
+          <span class="lt-label">Without an email, who looks after them?</span>
+          <div class="checks">
+            {emailed.map((e) => <label class="lt-check"><input type="checkbox" name="manager" value={e.personId} /> {nameOf(e.personId)}</label>)}
+          </div>
+          <p class="lt-hint">Someone with an email gets one saying they're in, and signs in with a code. Someone without one can't sign in; the people who look after them keep their list and see who they drew.</p>
+          <div class="lt-actions"><button class="lt-btn lt-btn-primary" type="submit">Add</button></div>
+        </form>
+      </section>
+    </>
+  )}
+</Base>

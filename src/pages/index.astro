@@ -1,0 +1,135 @@
+---
+import Base from '../layouts/Base.astro';
+import { getEnv, u } from '../lib/env';
+import { allGroups, createGroup, exchangesOf, groupsOf, identities, members, pairingsFor, participantsOf, peopleMap, type Exchange } from '../lib/data';
+
+/**
+ * Home: who you (and anyone you manage) are buying for this year, your Wish lists, and
+ * your Groups. The Hub Admin also starts Groups here and names their first Organizer.
+ */
+const env = getEnv();
+const viewer = Astro.locals.viewer;
+const mine = identities(viewer);
+let error: string | undefined;
+
+if (Astro.request.method === 'POST' && viewer.isHubAdmin) {
+  const form = await Astro.request.formData();
+  const name = String(form.get('name') ?? '').trim().slice(0, 80);
+  const organizer = String(form.get('organizer') ?? viewer.id);
+  if (!name) error = 'A Group needs a name.';
+  else {
+    const id = await createGroup(env.DB, name, organizer, viewer.id);
+    return Astro.redirect(u(`/group/${id}`), 303);
+  }
+}
+
+const groups = await groupsOf(env.DB, mine);
+
+// This year's Exchange in each Group: the soonest not yet done, else the latest.
+const current: { exchange: Exchange; groupName: string; mineIn: string[] }[] = [];
+for (const g of groups) {
+  const all = await exchangesOf(env.DB, g.id);
+  const live = all.filter((x) => x.state !== 'done').sort((a, b) => a.giftDate.localeCompare(b.giftDate))[0];
+  if (!live) continue;
+  const parts = await participantsOf(env.DB, live.id);
+  const mineIn = mine.filter((p) => parts.includes(p));
+  if (mineIn.length) current.push({ exchange: live, groupName: g.name, mineIn });
+}
+const pairings = new Map<string, Map<string, string>>();
+for (const c of current) pairings.set(c.exchange.id, await pairingsFor(env.DB, c.exchange.id, c.mineIn));
+
+const allIds = [...mine, ...[...pairings.values()].flatMap((m) => [...m.values()])];
+const people = await peopleMap(env, allIds);
+const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
+
+// The Hub Admin's view: every Group, and who could organise a new one.
+const everyGroup = viewer.isHubAdmin ? await allGroups(env.DB) : [];
+const others = everyGroup.filter((g) => !groups.some((m) => m.id === g.id));
+let candidates: { id: string; name: string }[] = [];
+if (viewer.isHubAdmin) {
+  const ids = new Set<string>([viewer.id]);
+  for (const g of everyGroup) for (const m of await members(env.DB, g.id)) ids.add(m.personId);
+  const map = await peopleMap(env, [...ids]);
+  candidates = [...map.values()].filter((p) => p.email).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+---
+
+<Base title="Gift exchange">
+  <h1 class="page">Gift exchange</h1>
+  <p class="page-lead">Who you're buying for, and what everyone would like.</p>
+
+  {current.length === 0 && (
+    <div class="lt-card">
+      <p style="margin:0">No exchange is under way for you right now. When an Organizer starts one and draws names, it shows up here.</p>
+    </div>
+  )}
+
+  <div class="cards">
+    {current.map(({ exchange, groupName, mineIn }) => (
+      <section class="lt-card">
+        <div class="lt-eyebrow">{groupName}</div>
+        <h2 style="margin:0.15rem 0 0.25rem"><a href={u(`/exchange/${exchange.id}`)}>{exchange.name}</a></h2>
+        <p class="lt-muted small" style="margin:0 0 0.75rem">Gifts on {fmt(exchange.giftDate)}{exchange.budget && <> · {exchange.budget}</>}</p>
+        {mineIn.map((giver) => {
+          const recipient = pairings.get(exchange.id)?.get(giver);
+          const lead = giver === viewer.id ? 'You are buying for' : `${nameOf(giver)} is buying for`;
+          return exchange.state === 'open' || !recipient ? (
+            <p class="lt-muted" style="margin:0.25rem 0">{giver === viewer.id ? 'Names are not drawn yet.' : `${nameOf(giver)}: names are not drawn yet.`}</p>
+          ) : (
+            <div class="recipient" style="padding:0.5rem 0">
+              <div>
+                <div class="lead">{lead}</div>
+                <div class="who-for">{nameOf(recipient)}</div>
+              </div>
+              <a class="lt-btn lt-btn-primary" href={u(`/list/${recipient}`)}>See their wish list</a>
+            </div>
+          );
+        })}
+      </section>
+    ))}
+  </div>
+
+  <h2 class="section">Wish lists</h2>
+  <div class="lt-card">
+    {mine.map((id) => (
+      <div class="lt-item">
+        <div class="lt-item-main"><span class="person-name">{id === viewer.id ? 'Your wish list' : `${nameOf(id)}'s wish list`}</span></div>
+        <div class="lt-item-actions"><a class="lt-btn lt-btn-sm" href={u(`/list/${id}`)}>Open</a></div>
+      </div>
+    ))}
+  </div>
+
+  <h2 class="section">Groups</h2>
+  {groups.length === 0 && others.length === 0 && <p class="lt-muted">You're not in a Group yet. Whoever runs your family's exchange adds you.</p>}
+  {(groups.length > 0 || others.length > 0) && (
+    <div class="lt-card">
+      {[...groups, ...others].map((g) => (
+        <div class="lt-item">
+          <div class="lt-item-main"><a class="person-name" href={u(`/group/${g.id}`)}>{g.name}</a>{others.includes(g) && <span class="lt-tag lt-tone-muted">not in it</span>}</div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  {viewer.isHubAdmin && (
+    <>
+      <h2 class="section">Start a Group</h2>
+      <div class="lt-card">
+        {error && <div class="lt-callout lt-tone-error" style="margin-bottom:1rem">{error}</div>}
+        <form method="post" class="lt-form">
+          <div class="lt-field-row">
+            <label class="lt-label"><span>Name</span><input class="lt-field" name="name" placeholder="Swavely Christmas" required /></label>
+            <label class="lt-label"><span>First Organizer</span>
+              <select class="lt-field" name="organizer">
+                {candidates.map((c) => <option value={c.id} selected={c.id === viewer.id}>{c.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <p class="lt-hint">Only you can start a Group. Its Organizers add everyone else.</p>
+          <div class="lt-actions"><button class="lt-btn lt-btn-primary" type="submit">Start it</button></div>
+        </form>
+      </div>
+    </>
+  )}
+</Base>

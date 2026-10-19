@@ -1,0 +1,90 @@
+/**
+ * Liquid Textile — Raw Edge
+ *
+ * Percentage-based clip-path polygons that give elements
+ * the slightly irregular edges of hand-cut fabric or handmade paper.
+ * Percentages scale responsively with element size.
+ *
+ * 8 midpoints per polygon (corners + edge midpoints) create
+ * visible organic variation. Apply different variants to
+ * separate elements so edges don't repeat.
+ *
+ * For things that stand alone: a card, a chip, a patch button. Not for
+ * pieces that touch. Patchwork clipped every quilt tile to its own raw
+ * edge and retired it (2026-08-24, d07e922): two neighbours' independent
+ * insets pinched and flared along the one seam they shared, and left
+ * gaps of background between them. Touching pieces need one wobbly line
+ * that both sides trace (a shared seam), which is drawing code, not a
+ * clip-path per element.
+ */
+
+.lt-raw-1 {
+  clip-path: polygon(
+    0.5% 1.2%,   30% 0.3%,   70% 0.8%,   99.2% 0.4%,
+    99.6% 35%,   99.1% 65%,  99.5% 98.8%,
+    65% 99.5%,   35% 99.1%,  0.8% 99.6%,
+    0.3% 60%,    0.7% 30%
+  );
+}
+
+.lt-raw-2 {
+  clip-path: polygon(
+    0.8% 0.4%,   35% 0.9%,   65% 0.2%,   99.5% 1.0%,
+    99.1% 40%,   99.7% 70%,  99.3% 99.2%,
+    70% 99.6%,   30% 99.8%,  0.4% 99.1%,
+    0.9% 55%,    0.2% 25%
+  );
+}
+
+.lt-raw-3 {
+  clip-path: polygon(
+    1.0% 0.6%,   40% 0.2%,   60% 1.1%,   99.4% 0.3%,
+    99.8% 30%,   99.2% 60%,  99.6% 99.5%,
+    60% 99.2%,   40% 99.7%,  0.6% 99.4%,
+    0.2% 65%,    1.1% 35%
+  );
+}
+
+.lt-raw-4 {
+  clip-path: polygon(
+    0.3% 0.9%,   25% 0.5%,   75% 1.0%,   99.7% 0.7%,
+    99.3% 45%,   99.8% 55%,  99.1% 99.3%,
+    75% 99.8%,   25% 99.4%,  0.9% 99.7%,
+    0.5% 50%,    1.0% 20%
+  );
+}
+
+.lt-raw-5 {
+  clip-path: polygon(
+    0.7% 0.3%,   45% 1.1%,   55% 0.4%,   99.3% 0.8%,
+    99.5% 25%,   99.1% 75%,  99.7% 99.1%,
+    55% 99.5%,   45% 99.3%,  0.4% 99.8%,
+    1.1% 70%,    0.6% 40%
+  );
+}
+
+.lt-raw-none {
+  clip-path: none;
+}
+
+/**
+ * Seam allowance — for neighboring/tiled elements.
+ * Uses transform: scale() to make elements paint slightly past
+ * their layout box, overlapping neighbors. Combined with a raw
+ * edge clip-path, the overlap creates organic joins with no gaps.
+ *
+ * Z-order: later elements paint on top (correct for layered fabric).
+ * scale() does not affect layout — siblings don't shift.
+ */
+
+.lt-seam {
+  transform: scale(1.03);
+  position: relative; /* establish stacking context */
+}
+
+/* Combine with any lt-raw-* for organic overlapping edges */
+.lt-seam.lt-raw-1 { z-index: 1; }
+.lt-seam.lt-raw-2 { z-index: 2; }
+.lt-seam.lt-raw-3 { z-index: 3; }
+.lt-seam.lt-raw-4 { z-index: 4; }
+.lt-seam.lt-raw-5 { z-index: 5; }

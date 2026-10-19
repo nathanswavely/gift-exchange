@@ -1,0 +1,202 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getEnv, u } from '../../lib/env';
+import {
+  canOrganize, canView, fixedOf, getExchange, getGroup, identities, members, pairingsFor, participantsOf, peopleMap, runDraw, setFixed, setParticipants, updateExchange,
+  type DrawOutcome,
+} from '../../lib/data';
+
+/**
+ * One Exchange. Everyone in it sees the details and, once drawn, their own Recipient
+ * (and the Recipients of anyone they manage). Its Organizers choose the Participants,
+ * set Fixed pairings, and Draw; after the Draw they can Re-pair (when someone leaves
+ * or joins) or Redraw. Nobody sees anyone else's Pairing (ADR-0001).
+ */
+const env = getEnv();
+const viewer = Astro.locals.viewer;
+const ex = await getExchange(env.DB, Astro.params.id!);
+if (!ex || !(await canView(env.DB, viewer, ex.groupId))) return new Response('Not found.', { status: 404 });
+const group = (await getGroup(env.DB, ex.groupId))!;
+const organizing = (await canOrganize(env.DB, viewer, ex.groupId)) && ex.state !== 'done';
+let outcome: (DrawOutcome & { mode: 'draw' | 'redraw' | 'repair' }) | undefined;
+let notice: { tone: 'success' | 'error'; text: string } | undefined;
+
+if (Astro.request.method === 'POST' && organizing) {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  const groupIds = (await members(env.DB, ex.groupId)).map((m) => m.personId);
+  const allow = form.get('allow') === '1';
+
+  if (action === 'details') {
+    const name = String(form.get('name') ?? '').trim().slice(0, 80);
+    const giftDate = String(form.get('gift_date') ?? '');
+    if (name && /^\d{4}-\d{2}-\d{2}$/.test(giftDate)) {
+      await updateExchange(env.DB, ex.id, { name, giftDate, budget: String(form.get('budget') ?? '').trim().slice(0, 60) || null });
+      return Astro.redirect(Astro.url.pathname, 303);
+    }
+    notice = { tone: 'error', text: 'An Exchange needs a name and a gift date.' };
+  } else if (action === 'participants') {
+    const chosen = form.getAll('p').map(String).filter((p) => groupIds.includes(p));
+    await setParticipants(env.DB, ex.id, chosen);
+    if (ex.state === 'drawn') outcome = { ...(await runDraw(env, ex, 'repair', allow)), mode: 'repair' };
+    else notice = { tone: 'success', text: 'Saved.' };
+  } else if (action === 'fixed' && ex.state === 'open') {
+    const giver = String(form.get('giver') ?? '');
+    const recipient = String(form.get('recipient') ?? '');
+    if (groupIds.includes(giver)) await setFixed(env.DB, ex.id, giver, groupIds.includes(recipient) ? recipient : null);
+    return Astro.redirect(Astro.url.pathname, 303);
+  } else if (action === 'unfix' && ex.state === 'open') {
+    await setFixed(env.DB, ex.id, String(form.get('giver') ?? ''), null);
+    return Astro.redirect(Astro.url.pathname, 303);
+  } else if (action === 'draw' || action === 'redraw' || action === 'repair') {
+    if (action === 'draw' && ex.state !== 'open') notice = { tone: 'error', text: 'Names are already drawn.' };
+    else outcome = { ...(await runDraw(env, ex, action, allow)), mode: action };
+  }
+  if (outcome?.ok) {
+    const q = new URLSearchParams({ done: outcome.mode, told: String(outcome.told), repeats: String(outcome.repeats) });
+    return Astro.redirect(`${Astro.url.pathname}?${q}`, 303);
+  }
+}
+
+const fresh = (await getExchange(env.DB, ex.id))!;
+const parts = await participantsOf(env.DB, ex.id);
+const groupMembers = await members(env.DB, ex.groupId);
+const fixed = organizing ? await fixedOf(env.DB, ex.id) : [];
+const mineIn = identities(viewer).filter((p) => parts.includes(p));
+const mine = await pairingsFor(env.DB, ex.id, mineIn);
+const people = await peopleMap(env, [...groupMembers.map((m) => m.personId), ...parts, ...mine.values()]);
+const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
+const sortedMembers = [...groupMembers].sort((a, b) => nameOf(a.personId).localeCompare(nameOf(b.personId)));
+const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
+const done = Astro.url.searchParams.get('done');
+const told = Astro.url.searchParams.get('told');
+const repeats = Number(Astro.url.searchParams.get('repeats') ?? 0);
+const doneText = done && {
+  draw: `Names are drawn. ${told} ${told === '1' ? 'person was' : 'people were'} emailed to sign in and look.`,
+  redraw: `Drawn again. Everyone (${told}) was emailed to look again.`,
+  repair: told === '0' ? 'Saved. Nobody needed a new name.' : `Re-paired. ${told} ${told === '1' ? 'Giver has' : 'Givers have'} a new name and ${told === '1' ? 'was' : 'were'} emailed.`,
+}[done as 'draw' | 'redraw' | 'repair'];
+const failText = outcome && !outcome.ok && {
+  too_few: 'It takes at least two people to draw names.',
+  impossible: "No draw fits these rules: someone has nobody they're allowed to draw. Loosen an Exclusion or a Fixed pairing, or add someone.",
+  needs_repeats: `No draw avoids last year entirely. The best one has ${outcome.repeats} ${outcome.repeats === 1 ? 'person' : 'people'} with the same Recipient as last year. (We won't say who.)`,
+}[outcome.reason];
+const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Done' }[fresh.state];
+---
+
+<Base title={fresh.name}>
+  <p class="crumbs"><a href={u('/')}>Gift exchange</a> / <a href={u(`/group/${group.id}`)}>{group.name}</a></p>
+  <h1 class="page">{fresh.name}</h1>
+  <p class="page-lead">{fmt(fresh.giftDate)}{fresh.budget && ` · ${fresh.budget}`} · {stateText}</p>
+
+  {doneText && <div class="lt-callout lt-tone-success" style="margin-bottom:1rem">{doneText}{repeats > 0 && ` ${repeats} kept last year's Recipient, as agreed.`}</div>}
+  {notice && <div class={`lt-callout lt-tone-${notice.tone}`} style="margin-bottom:1rem">{notice.text}</div>}
+  {failText && (
+    <div class="lt-callout lt-tone-warning" style="margin-bottom:1rem">
+      <p style="margin:0 0 0.5rem">{failText}</p>
+      {outcome && !outcome.ok && outcome.reason === 'needs_repeats' && (
+        <form method="post">
+          <input type="hidden" name="action" value={outcome.mode} />
+          <input type="hidden" name="allow" value="1" />
+          <button class="lt-btn lt-btn-warning lt-btn-sm" type="submit">Draw anyway, with as few repeats as possible</button>
+        </form>
+      )}
+    </div>
+  )}
+
+  {mineIn.length > 0 && (
+    <section class="lt-card">
+      {mineIn.map((giver) => {
+        const r = mine.get(giver);
+        const lead = giver === viewer.id ? 'You are buying for' : `${nameOf(giver)} is buying for`;
+        return r ? (
+          <div class="recipient" style="padding:0.4rem 0">
+            <div><div class="lead">{lead}</div><div class="who-for">{nameOf(r)}</div></div>
+            <a class="lt-btn lt-btn-primary" href={u(`/list/${r}`)}>See their wish list</a>
+          </div>
+        ) : (
+          <p class="lt-muted" style="margin:0.3rem 0">{giver === viewer.id ? 'You' : nameOf(giver)}: names are not drawn yet.</p>
+        );
+      })}
+    </section>
+  )}
+  {mineIn.length === 0 && <p class="lt-muted">You're not taking part in this one.</p>}
+
+  {organizing && (
+    <>
+      <h2 class="section">Running it</h2>
+      <section class="lt-card">
+        {fresh.state === 'open' ? (
+          <form method="post" class="lt-actions">
+            <input type="hidden" name="action" value="draw" />
+            <button class="lt-btn lt-btn-primary" type="submit">Draw names ({parts.length} people)</button>
+            <span class="lt-muted small">Everyone taking part gets an email to sign in and look. Nobody, you included, can see anyone else's.</span>
+          </form>
+        ) : (
+          <div class="stack">
+            <p style="margin:0">Names are drawn and sealed. To change who's taking part, edit the list below and save: only the Givers who must change get a new name.</p>
+            <form method="post" onsubmit="return confirm('Draw every name again and email everyone?')" class="lt-actions">
+              <input type="hidden" name="action" value="redraw" />
+              <button class="lt-btn lt-btn-sm" type="submit">Redraw everyone</button>
+              <span class="lt-muted small">For when someone tells you they drew a person they had before.</span>
+            </form>
+          </div>
+        )}
+      </section>
+
+      <h2 class="section">Who's taking part</h2>
+      <section class="lt-card">
+        <form method="post" class="lt-form wide">
+          <input type="hidden" name="action" value="participants" />
+          <div class="checks">
+            {sortedMembers.map((m) => <label class="lt-check"><input type="checkbox" name="p" value={m.personId} checked={parts.includes(m.personId)} /> {nameOf(m.personId)}</label>)}
+          </div>
+          <div class="lt-actions"><button class="lt-btn lt-btn-sm" type="submit">{fresh.state === 'drawn' ? 'Save and re-pair' : 'Save'}</button></div>
+        </form>
+      </section>
+
+      {fresh.state === 'open' && (
+        <>
+          <h2 class="section">Fixed pairings</h2>
+          <section class="lt-card">
+            <p class="lt-muted small" style="margin-top:0">A Fixed pairing is kept by the draw: "Mom always has Grandpa." Everyone else is drawn around it.</p>
+            {fixed.map(([g, r]) => (
+              <div class="lt-item">
+                <div class="lt-item-main">{nameOf(g)} → {nameOf(r)}</div>
+                <form method="post" class="lt-item-actions">
+                  <input type="hidden" name="action" value="unfix" />
+                  <input type="hidden" name="giver" value={g} />
+                  <button class="lt-btn lt-btn-ghost lt-btn-sm" type="submit">Remove</button>
+                </form>
+              </div>
+            ))}
+            <form method="post" class="lt-form wide" style="margin-top:0.75rem">
+              <input type="hidden" name="action" value="fixed" />
+              <div class="lt-field-row">
+                <label class="lt-label"><span>Giver</span><select class="lt-field" name="giver">{sortedMembers.filter((m) => parts.includes(m.personId)).map((m) => <option value={m.personId}>{nameOf(m.personId)}</option>)}</select></label>
+                <label class="lt-label"><span>always buys for</span><select class="lt-field" name="recipient">{sortedMembers.filter((m) => parts.includes(m.personId)).map((m) => <option value={m.personId}>{nameOf(m.personId)}</option>)}</select></label>
+              </div>
+              <div class="lt-actions"><button class="lt-btn lt-btn-sm" type="submit">Add Fixed pairing</button></div>
+            </form>
+          </section>
+        </>
+      )}
+
+      <details class="edit" style="margin-top:var(--lt-stack)">
+        <summary>Edit name, date and budget</summary>
+        <section class="lt-card" style="margin-top:0.5rem">
+          <form method="post" class="lt-form wide">
+            <input type="hidden" name="action" value="details" />
+            <label class="lt-label"><span>Name</span><input class="lt-field" name="name" value={fresh.name} required /></label>
+            <div class="lt-field-row">
+              <label class="lt-label"><span>Gift date</span><input class="lt-field" type="date" name="gift_date" value={fresh.giftDate} required /></label>
+              <label class="lt-label"><span>Budget</span><input class="lt-field" name="budget" value={fresh.budget ?? ''} /></label>
+            </div>
+            <div class="lt-actions"><button class="lt-btn lt-btn-sm" type="submit">Save</button></div>
+          </form>
+        </section>
+      </details>
+    </>
+  )}
+</Base>
