@@ -2,8 +2,8 @@
 import Base from '../../layouts/Base.astro';
 import { getEnv, u } from '../../lib/env';
 import {
-  canOrganize, canView, fixedOf, getExchange, getGroup, identities, members, pairingsFor, participantsOf, peopleMap, runDraw, setFixed, setParticipants, updateExchange,
-  type DrawOutcome,
+  canOrganize, canView, fixedOf, getExchange, getGroup, identities, members, pairingsFor, participantsOf, peopleMap, runDraw, setFixed, setParticipants, unpairedGivers,
+  updateExchange, type DrawOutcome,
 } from '../../lib/data';
 
 /**
@@ -64,6 +64,7 @@ const groupMembers = await members(env.DB, ex.groupId);
 const fixed = organizing ? await fixedOf(env.DB, ex.id) : [];
 const mineIn = identities(viewer).filter((p) => parts.includes(p));
 const mine = await pairingsFor(env.DB, ex.id, mineIn);
+const unpaired = organizing && fresh.state === 'drawn' ? await unpairedGivers(env.DB, ex.id) : 0;
 const people = await peopleMap(env, [...groupMembers.map((m) => m.personId), ...parts, ...mine.values()]);
 const nameOf = (id: string) => people.get(id)?.name ?? 'Someone';
 const sortedMembers = [...groupMembers].sort((a, b) => nameOf(a.personId).localeCompare(nameOf(b.personId)));
@@ -116,7 +117,10 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
             <a class="lt-btn lt-btn-primary" href={u(`/list/${r}`)}>See their wish list</a>
           </div>
         ) : (
-          <p class="lt-muted" style="margin:0.3rem 0">{giver === viewer.id ? 'You' : nameOf(giver)}: names are not drawn yet.</p>
+          <p class="lt-muted" style="margin:0.3rem 0">
+            {giver === viewer.id ? 'You' : nameOf(giver)}:{' '}
+            {fresh.state === 'open' ? 'names are not drawn yet.' : 'a new name is on its way, since the people taking part changed after the draw. You will get an email.'}
+          </p>
         );
       })}
     </section>
@@ -135,6 +139,17 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
           </form>
         ) : (
           <div class="stack">
+            {unpaired > 0 && (
+              <div class="lt-callout lt-tone-warning">
+                <p style="margin:0 0 0.5rem">
+                  {unpaired === 1 ? 'One person taking part has' : `${unpaired} people taking part have`} nobody to buy for, because someone left after the draw. Re-pair to give {unpaired === 1 ? 'them' : 'each'} a name; only the Givers who change are emailed.
+                </p>
+                <form method="post">
+                  <input type="hidden" name="action" value="repair" />
+                  <button class="lt-btn lt-btn-warning lt-btn-sm" type="submit">Re-pair now</button>
+                </form>
+              </div>
+            )}
             <p style="margin:0">Names are drawn and sealed. To change who's taking part, edit the list below and save: only the Givers who must change get a new name.</p>
             <form method="post" onsubmit="return confirm('Draw every name again and email everyone?')" class="lt-actions">
               <input type="hidden" name="action" value="redraw" />

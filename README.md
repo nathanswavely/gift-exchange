@@ -23,6 +23,10 @@ signs people in and sends the email. Start with [CONTEXT.md](CONTEXT.md) for the
   mark "I'm getting this", which you never see.
 - **Managed people.** Kids and grandparents without email are drawn like anyone else;
   the people who look after them keep their list and see who they drew.
+- **Removal reaches here.** When someone is removed from swavely.lol, an hourly cron
+  asks the Hub who and deletes their wish list, claims, exclusions and places, and
+  re-pairs any drawn exchange they were in
+  ([ADR-0002](docs/adr/0002-a-removed-person-leaves-everything.md)).
 
 ## How the draw works
 
@@ -44,9 +48,15 @@ npm run db:migrate:local && npm run db:seed:local
 npm run dev                      # http://localhost:4332/gifts
 ```
 
-The seed is the Hub's made-up family with last year's exchange already drawn.
+The seed is the Hub's made-up family with last year's exchange already drawn. Locally
+the hourly purge runs when you open `http://localhost:4332/cdn-cgi/handler/scheduled`.
+
+`npm run test:removal` checks removal end to end: it builds the Hub and this Tool, runs
+both on ports 4361 and 4362 with their own state (so your dev servers are untouched),
+removes two of the seed family and checks that nothing of them is left.
 
 ## Deploying
 
 After the Hub (the D1 database `gift-exchange` already exists), run
-`npm run deploy`. No secrets: mail goes through the Hub.
+`npm run deploy`. No secrets: mail goes through the Hub. The deploy also sets the hourly
+cron trigger.

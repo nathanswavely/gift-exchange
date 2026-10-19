@@ -47,4 +47,11 @@ export interface HubApiContract {
    * be reached.
    */
   notify(personIds: string[], notice: Notice): Promise<{ sent: number; unreachable: string[] }>;
+  /**
+   * The People removed from swavely.lol at or after `since` (unix seconds), oldest first,
+   * at most 500 at a time (ADR-0003). A Tool removes everything it holds of each, then
+   * asks again from the last `removedAt` it saw; the boundary repeats, so removing must
+   * be safe to do twice. An id here never comes back.
+   */
+  removedSince(since: number): Promise<{ id: string; removedAt: number }[]>;
 }

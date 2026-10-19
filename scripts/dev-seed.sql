@@ -3,6 +3,7 @@
 -- Last year's Exchange is drawn and done, so this year's draw has a "last year" to avoid.
 DELETE FROM claims; DELETE FROM items; DELETE FROM pairings; DELETE FROM fixed_pairings;
 DELETE FROM participants; DELETE FROM exchanges; DELETE FROM exclusions; DELETE FROM group_people; DELETE FROM groups;
+DELETE FROM hub_cursor; -- the Hub's seed empties its list of Removed People too
 
 INSERT INTO groups (id, name, created_by, created_at) VALUES ('g_simpsons', 'Simpson Christmas', 'p_homer', 0);
 INSERT INTO group_people (group_id, person_id, organizer, added_at) VALUES

@@ -11,7 +11,8 @@
   "name": "gift-exchange",
   // The main Cloudflare account, which holds the swavely.lol zone.
   "account_id": "98521ca2e365abe021315e836c0a31ed",
-  "main": "@astrojs/cloudflare/entrypoints/server",
+  // The adapter's own entrypoint plus a scheduled handler (src/worker.ts).
+  "main": "./src/worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
 
@@ -23,6 +24,10 @@
   ],
 
   "observability": { "enabled": true },
+
+  // Hourly: remove whoever the Hub has removed since the last run (swavely-lol
+  // ADR-0003). Locally, GET /cdn-cgi/handler/scheduled runs it once.
+  "triggers": { "crons": ["17 * * * *"] },
 
   "services": [
     { "binding": "HUB", "service": "swavely-lol", "entrypoint": "HubApi" }

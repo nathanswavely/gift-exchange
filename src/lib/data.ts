@@ -204,6 +204,19 @@ export async function pairingsFor(db: D1Database, exchangeId: string, giverIds: 
   return new Map(results.map((r) => [r.giver_id, r.recipient_id]));
 }
 
+/**
+ * How many Participants of a drawn Exchange have no Recipient: someone left after the
+ * Draw (or was Removed from swavely.lol) and no Re-pairing has happened yet. A count,
+ * never who.
+ */
+export async function unpairedGivers(db: D1Database, exchangeId: string): Promise<number> {
+  const r = await db
+    .prepare('SELECT COUNT(*) AS n FROM participants p WHERE p.exchange_id = ?1 AND NOT EXISTS (SELECT 1 FROM pairings q WHERE q.exchange_id = ?1 AND q.giver_id = p.person_id)')
+    .bind(exchangeId)
+    .first<{ n: number }>();
+  return r?.n ?? 0;
+}
+
 /** Last year: the Group's most recent drawn Exchange before this one. Read by the Draw only. */
 async function previousPairings(db: D1Database, ex: Exchange): Promise<Map<string, string>> {
   const prev = await db

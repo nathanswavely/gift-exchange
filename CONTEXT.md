@@ -104,5 +104,7 @@ _Avoid_: Hidden, private, secret
 **Re-pairing**:
 Changing a sealed **Exchange** after the **Draw** because someone leaves or joins. The
 Organizer names who changed; the Tool re-pairs only those it must and tells each
-affected Giver their new Recipient. Nobody sees the others.
+affected Giver their new Recipient. Nobody sees the others. When someone is **Removed**
+from swavely.lol (the Hub's word), the Tool re-pairs on its own, and asks an Organizer
+only when the rules leave no Re-pairing without a **Repeat** (ADR-0002).
 _Avoid_: Redraw (that is every Pairing again), swap, override
