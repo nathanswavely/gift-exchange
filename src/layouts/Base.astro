@@ -19,7 +19,9 @@ const viewer = Astro.locals.viewer;
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href={u('/favicon.svg')} type="image/svg+xml" />
+    <link rel="icon" href={hubUrl(env, '/favicon/favicon.ico')} sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href={hubUrl(env, '/favicon/favicon-32x32.png')} />
+    <link rel="apple-touch-icon" sizes="180x180" href={hubUrl(env, '/favicon/apple-touch-icon.png')} />
     <title>{`${title} · swavely.lol`}</title>
     <script is:inline>
       (function () {
@@ -34,7 +36,7 @@ const viewer = Astro.locals.viewer;
     <div class="shell">
       <header class="bar">
         <span class="brand">
-          <a class="brand" href={hubUrl(env, '/')}><img src={u('/favicon.svg')} alt="" width="26" height="26" />swavely.lol</a>
+          <a class="brand" href={hubUrl(env, '/')}><img src={hubUrl(env, '/favicon/android-chrome-192x192.png')} alt="" width="26" height="26" />swavely.lol</a>
           <a class="tool" href={u('/')}>/ gifts</a>
         </span>
         <div class="who">
