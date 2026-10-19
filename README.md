@@ -24,8 +24,8 @@ signs people in and sends the email. Start with [CONTEXT.md](CONTEXT.md) for the
 - **Managed people.** Kids and grandparents without email are drawn like anyone else;
   the people who look after them keep their list and see who they drew.
 - **Removal reaches here.** When someone is removed from swavely.lol, an hourly cron
-  asks the Hub who and deletes their wish list, claims, exclusions and places, and
-  re-pairs any drawn exchange they were in
+  asks the Hub who and deletes their wish list, claims, exclusions, places and
+  pairings. A drawn exchange they were in waits for its organizer to press Re-pair
   ([ADR-0002](docs/adr/0002-a-removed-person-leaves-everything.md)).
 
 ## How the draw works

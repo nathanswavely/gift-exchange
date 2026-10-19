@@ -2,7 +2,7 @@
 --
 -- A tight Group: this year Patty, Selma and Abe are drawn, and last year Patty and Selma
 -- had each other. Once Abe is Removed, the only draw left repeats last year, so the
--- purge must leave the Re-pairing to an Organizer rather than allow a Repeat.
+-- Organizer's Re-pairing must ask before allowing a Repeat.
 INSERT INTO groups (id, name, created_by, created_at) VALUES ('g_tight', 'Tight three', 'p_homer', 0);
 INSERT INTO group_people (group_id, person_id, organizer, added_at) VALUES
   ('g_tight', 'p_homer', 1, 0), ('g_tight', 'p_patty', 0, 0), ('g_tight', 'p_selma', 0, 0), ('g_tight', 'p_abe', 0, 0);

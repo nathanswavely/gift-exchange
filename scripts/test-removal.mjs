@@ -145,15 +145,16 @@ async function main() {
   wrangler(TOOL, 'd1', 'migrations', 'apply', 'gift-exchange', '--local', '--persist-to', stateOf(TOOL));
   sqlFile(TOOL, 'gift-exchange', 'scripts/dev-seed.sql');
   sqlFile(TOOL, 'gift-exchange', 'scripts/test-removal.sql');
-  session('p_homer'); // the Hub Admin, and an Organizer of both Groups
-  session('p_patty');
+  // Everyone with an email can sign in; Homer looks after Bart and Maggie.
+  for (const p of ['p_homer', 'p_marge', 'p_abe', 'p_patty', 'p_selma']) session(p);
+  const viewerFor = (giver) => (giver === 'p_bart' || giver === 'p_maggie' ? 'p_homer' : giver);
 
   start(HUB, HUB_PORT);
   const tool = start(TOOL, TOOL_PORT, ['--test-scheduled']);
   await up(`${hubAt}/healthz`);
   await up(`${toolAt}/healthz`);
 
-  // ---------------------------------------- Lisa: a drawn Exchange re-pairs ----
+  // ------------------------ Lisa: a drawn Exchange waits for its Organizer ----
   const drew = await post(`${toolAt}/exchange/x_draw`, 'p_homer', { action: 'draw' });
   check(drew.status === 303 && /done=draw/.test(drew.location), 'Homer draws the 2098 Exchange');
   const before = pairings('x_draw');
@@ -168,30 +169,39 @@ async function main() {
   await tick();
   check(traces('p_lisa').length === 0, `no row in the Tool names Lisa (${traces('p_lisa').join(', ') || 'none'})`);
   const after = pairings('x_draw');
-  const seven = participants('x_draw');
-  check(seven.length === 7, 'the drawn Exchange goes on without her');
-  check(valid(after, seven, 'g_simpsons'), 'its Re-pairing is a whole, lawful draw');
-  const changed = seven.filter((g) => before.get(g) !== after.get(g));
-  check(changed.includes(lisasGiver), "Lisa's Giver has a new name");
-  check(changed.length <= 2, `only the Givers who must change do (${changed.length})`);
+  check(participants('x_draw').length === 7, 'the drawn Exchange goes on without her');
+  check(after.size === 6 && !after.has(lisasGiver), "her own Pairing goes, and her Giver's name is withdrawn");
+  check([...after].every(([g, r]) => before.get(g) === r), 'the purge re-pairs nobody: every other Pairing stands');
+  const asOrganizer = (await get(`${toolAt}/exchange/x_draw`, 'p_homer')).text;
+  check(asOrganizer.includes('Re-pair now') && asOrganizer.includes('One person taking part has'), 'Homer, organizing, is asked to Re-pair');
+  const asGiver = (await get(`${toolAt}/exchange/x_draw`, viewerFor(lisasGiver))).text;
+  check(asGiver.includes('your name was withdrawn'), "Lisa's Giver is told their name was withdrawn");
   check(pairings('x_2025').size === 6, "last year's history keeps everyone else's Pairings");
   check(participants('x_open').length === 7, 'the open Exchange drops her as a Participant');
   check(toolSql(`SELECT id FROM items WHERE id IN ('i_4', 'i_5')`).length === 0, 'her Wish list is gone, and the Claim on it');
   check(toolSql(`SELECT value FROM hub_cursor WHERE name = 'removed'`).length === 1, 'the Tool remembers how far it has read');
 
-  // ------------------------------- Abe: no lawful Re-pairing, so it waits ----
+  const repaired = await post(`${toolAt}/exchange/x_draw`, 'p_homer', { action: 'repair' });
+  check(repaired.status === 303 && /done=repair/.test(repaired.location), `pressing Re-pair now re-pairs (${repaired.location})`);
+  const mended = pairings('x_draw');
+  const seven = participants('x_draw');
+  check(valid(mended, seven, 'g_simpsons'), 'into a whole, lawful draw');
+  const changed = seven.filter((g) => before.get(g) !== mended.get(g));
+  check(changed.includes(lisasGiver) && changed.length <= 2, `changing only the Givers who must (${changed.length})`);
+  check(!(await get(`${toolAt}/exchange/x_draw`, 'p_homer')).text.includes('Re-pair now'), 'and the prompt goes away');
+
+  // ------------------- Abe: the Organizer's Re-pairing still asks first ----
   await post(`${hubAt}/people`, 'p_homer', { action: 'remove', id: 'p_abe' });
   await tick();
   check(traces('p_abe').length === 0, `no row in the Tool names Abe (${traces('p_abe').join(', ') || 'none'})`);
   const tight = pairings('x_tnow');
   check(tight.size === 1 && tight.get('p_selma') === 'p_patty', 'the tight Exchange keeps the Pairing that did not involve him and drops the rest');
   check(participants('x_tnow').join() === 'p_patty,p_selma', 'and goes on with Patty and Selma');
-  const asHomer = (await get(`${toolAt}/exchange/x_tnow`, 'p_homer')).text;
-  check(asHomer.includes('Re-pair now') && asHomer.includes('One person taking part has'), 'its Organizer is asked to Re-pair');
-  const asPatty = (await get(`${toolAt}/exchange/x_tnow`, 'p_patty')).text;
-  check(asPatty.includes('a new name is on its way'), 'Patty is told a new name is coming');
-  check(valid(pairings('x_draw'), participants('x_draw'), 'g_simpsons') && participants('x_draw').length === 6, 'the Simpson draw re-pairs again without Abe');
-  check(toolSql(`SELECT 1 FROM items WHERE id = 'i_abe'`).length === 0, 'his Wish list is gone, with Selma\'s Claim on it');
+  check((await get(`${toolAt}/exchange/x_tnow`, 'p_patty')).text.includes('your name was withdrawn'), 'Patty is told her name was withdrawn');
+  const tightRepair = await post(`${toolAt}/exchange/x_tnow`, 'p_homer', { action: 'repair' });
+  check(tightRepair.status === 200 && tightRepair.text.includes('No draw avoids last year entirely'), 'Re-pairing it asks before allowing a Repeat');
+  check(pairings('x_draw').size === 5 && participants('x_draw').length === 6, 'the Simpson draw drops Abe too, and waits again');
+  check(toolSql(`SELECT 1 FROM items WHERE id = 'i_abe'`).length === 0, "his Wish list is gone, with Selma's Claim on it");
 
   // ------------------------------------------------- safe to run twice ----
   const all = () => JSON.stringify(toolSql('SELECT * FROM pairings ORDER BY exchange_id, giver_id'));

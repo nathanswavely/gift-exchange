@@ -119,7 +119,7 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
         ) : (
           <p class="lt-muted" style="margin:0.3rem 0">
             {giver === viewer.id ? 'You' : nameOf(giver)}:{' '}
-            {fresh.state === 'open' ? 'names are not drawn yet.' : 'a new name is on its way, since the people taking part changed after the draw. You will get an email.'}
+            {fresh.state === 'open' ? 'names are not drawn yet.' : 'your name was withdrawn, because the people taking part changed after the draw. An Organizer will re-pair, and you will get an email with a new one.'}
           </p>
         );
       })}
@@ -142,7 +142,7 @@ const stateText = { open: 'Names not drawn yet', drawn: 'Names drawn', done: 'Do
             {unpaired > 0 && (
               <div class="lt-callout lt-tone-warning">
                 <p style="margin:0 0 0.5rem">
-                  {unpaired === 1 ? 'One person taking part has' : `${unpaired} people taking part have`} nobody to buy for, because someone left after the draw. Re-pair to give {unpaired === 1 ? 'them' : 'each'} a name; only the Givers who change are emailed.
+                  {unpaired === 1 ? 'One person taking part has' : `${unpaired} people taking part have`} nobody to buy for, because someone left after the draw. Re-pair to give {unpaired === 1 ? 'them' : 'each'} a name; only the Givers who change are emailed, and nobody, you included, sees who.
                 </p>
                 <form method="post">
                   <input type="hidden" name="action" value="repair" />

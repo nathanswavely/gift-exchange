@@ -1,9 +1,10 @@
-# A Removed Person leaves everything, and a drawn Exchange re-pairs itself
+# A Removed Person leaves everything; a drawn Exchange waits for its Organizer
 
 ## Status
 
-proposed (2026-10-19), waiting on Nathan for the drawn Exchange. Follows swavely-lol
-ADR-0003, which has the Hub list who was Removed and each Tool delete what it holds.
+accepted (2026-10-19). Nathan chose to leave drawn Exchanges to their Organizers "for
+now". Follows swavely-lol ADR-0003, which has the Hub list who was Removed and each
+Tool delete what it holds.
 
 ## Decision
 
@@ -15,24 +16,28 @@ Within the hour of someone being **Removed** from swavely.lol, the hourly purge
 - every **Exclusion** they are either end of, and their place in every **Group**, as an
   Organizer or not;
 - their place in every **Exchange**: as a **Participant**, in any **Fixed pairing**, and
-  in the **Pairings** of an Exchange that is open (there are none yet) or done (history,
-  which only ever served as "last year" for them).
+  in every **Pairing**, open, drawn or done.
 
-An Exchange that is **drawn** and not yet done is **Re-paired** without them, exactly as
-if an Organizer had unticked them: only the **Givers** who must change get a new name, and
-each gets the usual email, which never carries one. If no Re-pairing exists without a
-**Repeat**, or at all, the purge does not decide for the Organizer: it drops the
-Pairings they were in, the Exchange's Organizers see "Re-pair now" with a count and no
-names, and the Giver left without a Recipient is told a new name is on its way.
+The purge never Re-pairs and never emails. In an Exchange that is **drawn** and not yet
+done, dropping their Pairings leaves their **Giver** with nobody to buy for (and the
+person they bought for with no Giver). Until an Organizer acts:
+
+- that Giver, and whoever manages them, sees that their name was withdrawn and that an
+  email will come with a new one;
+- the Exchange's Organizers see how many people have nobody to buy for, never who, and a
+  "Re-pair now" button. Pressing it runs the usual **Re-pairing**: only the Givers who
+  must change get a new name and the usual email, and a **Repeat** still needs the
+  Organizer's yes.
 
 Groups and Exchanges they created stay; they belong to everyone in them.
 
 ## Considered Options
 
-**Never touch a drawn Exchange automatically.** Drop their Pairings and wait for an
-Organizer every time. Safer in that nobody is emailed by a cron, but a Removal usually
-comes to Nathan, not to the Group's Organizer, who may not know anyone left; a Giver
-could sit for weeks with nobody to buy for. Kept only as the fallback.
+**Re-pair automatically, falling back to the Organizer.** Built first: a Removal usually
+reaches Nathan rather than the Group's Organizer, who might not notice someone left. But
+it has a cron emailing family members at a moment nobody chose, about a change nobody
+in the Group made. Not for now; the code for it was `runDraw(env, ex, 'repair', false)`
+in the purge, and could come back.
 
 **Allow Repeats to get a Re-pairing through.** Never: Repeats need an Organizer's yes
 (CONTEXT.md, "Repeat").
@@ -41,8 +46,8 @@ could sit for weeks with nobody to buy for. Kept only as the fallback.
 
 ## Consequences
 
-- Removing someone can send email: their Giver, and at most one other, are told to look
-  again. That is the same email an Organizer's Re-pairing sends.
-- Organizers learn that a Giver has nobody only when the automatic Re-pairing could not
-  happen, and only as a count (ADR-0001 holds).
-- `npm run test:removal` proves all of it end to end against the seed family.
+- An Organizer has to look at the Exchange to notice. Nothing tells them by email; if
+  that proves a problem, a notice to the Group's Organizers is the next step.
+- The Organizer learns only a count (ADR-0001 holds).
+- `npm run test:removal` proves it end to end against the seed family, including the
+  Organizer pressing Re-pair.
