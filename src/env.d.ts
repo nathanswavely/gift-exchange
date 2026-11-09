@@ -3,8 +3,8 @@
 /** Environment the Worker runs with: wrangler.jsonc bindings, and .dev.vars locally. */
 interface ToolEnv {
   /** The Hub's HubApi entrypoint, over a service binding. */
-  HUB: import('./lib/hub-contract').HubApiContract;
-  /** Development only: milliseconds to add to every database call (dev-latency.ts). */
+  HUB: import('@swavely-lol/kit/contract').HubApiContract;
+  /** Development only: milliseconds to add to every database call (the kit's dev-latency). */
   DEV_DB_LATENCY_MS?: string;
   /** Groups, Exchanges, Pairings, Wish lists. */
   DB: D1Database;
@@ -14,7 +14,7 @@ interface ToolEnv {
 
 declare namespace App {
   interface Locals {
-    /** The signed-in Person, from the Hub; set by src/middleware.ts. */
-    viewer: import('./lib/hub-contract').Viewer;
+    /** The signed-in Person, from the Hub; set by src/middleware.ts (the kit's toolGuard). */
+    viewer: import('@swavely-lol/kit/contract').Viewer;
   }
 }

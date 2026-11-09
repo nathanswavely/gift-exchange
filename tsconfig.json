@@ -6,8 +6,7 @@
     "**/*"
   ],
   "exclude": [
-    "dist",
-    "src/styles/liquid-textile/*.js"
+    "dist"
   ],
   "compilerOptions": {
     "types": [

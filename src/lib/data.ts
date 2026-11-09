@@ -1,4 +1,4 @@
-import type { Person, Viewer } from './hub-contract';
+import type { Person, Viewer } from '@swavely-lol/kit/contract';
 import { draw } from './draw';
 import { u } from './env';
 

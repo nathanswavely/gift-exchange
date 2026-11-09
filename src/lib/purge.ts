@@ -1,3 +1,4 @@
+import { runRemovals } from '@swavely-lol/kit/removals';
 import { getExchange, type Exchange } from './data';
 
 /**
@@ -16,20 +17,9 @@ import { getExchange, type Exchange } from './data';
  * Safe to run twice: someone already gone matches no rows.
  */
 
-const CURSOR = 'removed';
-
-export async function purgeRemoved(env: ToolEnv): Promise<{ removed: number }> {
-  const db = env.DB;
-  const since = (await db.prepare('SELECT value FROM hub_cursor WHERE name = ?1').bind(CURSOR).first<{ value: number }>())?.value ?? 0;
-  const removed = await env.HUB.removedSince(since);
-  for (const r of removed) await purgePerson(env.DB, r.id);
-  if (removed.length) {
-    await db
-      .prepare('INSERT INTO hub_cursor (name, value) VALUES (?1, ?2) ON CONFLICT (name) DO UPDATE SET value = excluded.value')
-      .bind(CURSOR, removed[removed.length - 1].removedAt)
-      .run();
-  }
-  return { removed: removed.length };
+/** Ask the Hub who is newly removed and purge each (the kit keeps the cursor). */
+export function purgeRemoved(env: ToolEnv): Promise<{ removed: number }> {
+  return runRemovals(env, purgePerson);
 }
 
 /** Delete everything this Tool holds of one Person. Returns the drawn Exchanges now waiting on an Organizer. */
